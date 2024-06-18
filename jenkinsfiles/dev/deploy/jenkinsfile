@@ -17,6 +17,6 @@ pipeline {
                 sh 'kubectl version --client'
             }
         }
-        
-    }
+
+}
 }
