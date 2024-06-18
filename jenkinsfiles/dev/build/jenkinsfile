@@ -15,7 +15,7 @@ pipeline {
          stage('Hello kubernetes deploy') {
             steps {
                 sh 'kubectl version --client'
-            }
-        } 
-    }
+      }
+     }
+     }
 }
