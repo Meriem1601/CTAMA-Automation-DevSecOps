@@ -1,0 +1,22 @@
+pipeline {
+    agent {label "build-agent" }
+
+    stages {
+        stage('Hello Git') {
+            steps {
+                sh 'git version'
+            }
+        }
+         stage('Hello docker build') {
+                 steps {
+                    sh 'docker version'
+                }
+            }
+         stage('Hello kubernetes deploy') {
+            steps {
+                sh 'kubectl version --client'
+            }
+        }
+        
+    }
+}
