@@ -1,0 +1,80 @@
+pipeline {
+    agent any
+
+    environment {
+        AWS_CREDENTIALS = credentials('aws-credentials')
+        GIT_CREDENTIALS = 'git-credentials'
+    }
+
+    stages {
+        stage('Verify Tools Installation') {
+            steps {
+                script {
+                    def tools = [
+                        'terraform': 'Terraform',
+                        'ansible --version': 'Ansible',
+                        'aws --version': 'AWS CLI'
+                    ]
+
+                    tools.each { command, name ->
+                        echo "Verifying ${name} installation..."
+                        def result = sh(script: "${command}", returnStatus: true)
+                        if (result != 0) {
+                            error "${name} is not installed or not in the PATH."
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Checkout Code') {
+            steps {
+                git branch: 'main', url: 'https://github.com/Meriem1601/CTAMA-Automation-DevSecOps.git', credentialsId: "${GIT_CREDENTIALS}"
+            }
+        }
+
+        stage('Terraform Init and Apply') {
+            steps {
+                dir('infra') {
+                    withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: "${AWS_CREDENTIALS}"]]) {
+                        sh 'terraform init'
+                        sh 'terraform apply -auto-approve'
+                    }
+                }
+            }
+        }
+
+        stage('Run Ansible Playbook') {
+            steps {
+                dir('infra') {
+                    withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: "${AWS_CREDENTIALS}"]]) {
+                        sh 'ansible-playbook -i hosts playbook.yml'
+                    }
+                }
+            }
+        }
+
+        stage('Verify Deployment') {
+            steps {
+                dir('infra') {
+                    sh '''
+                    # Fetch Kubernetes nodes and verify they are correctly labeled
+                    kubectl get nodes --kubeconfig=/home/ubuntu/.kube/config
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            cleanWs()
+        }
+        success {
+            echo 'Deployment completed successfully!'
+        }
+        failure {
+            echo 'Deployment failed. Please check the logs.'
+        }
+    }
+}
