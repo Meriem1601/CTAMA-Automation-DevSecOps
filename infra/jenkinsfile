@@ -1,9 +1,9 @@
 pipeline {
-    agent any
+    agent { label 'Eks-Agent' }
 
     environment {
         AWS_CREDENTIALS = credentials('aws-credentials')
-        GIT_CREDENTIALS = 'git-credentials'
+        GIT_CREDENTIALS = credentials('git-credentials')
     }
 
     stages {
