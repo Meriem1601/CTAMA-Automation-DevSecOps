@@ -7,48 +7,40 @@ pipeline {
     }
 
     stages {
-        stage('Verify Tools Installation') {
+        stage('Verify Tools') {
             steps {
-                sh '''
-                echo "Verifying Terraform installation..."
-                if terraform --version > /dev/null 2>&1; then
-                    echo "Terraform is installed"
-                else
-                    echo "Terraform is NOT installed"
-                    exit 1
-                fi
-
-                echo "Verifying Ansible installation..."
-                if ansible --version > /dev/null 2>&1; then
-                    echo "Ansible is installed"
-                else
-                    echo "Ansible is NOT installed"
-                    exit 1
-                fi
-
-                echo "Verifying AWS CLI installation..."
-                if aws --version > /dev/null 2>&1; then
-                    echo "AWS CLI is installed"
-                else
-                    echo "AWS CLI is NOT installed"
-                    exit 1
-                fi
-                '''
+                script {
+                    def tools = ['terraform', 'ansible', 'aws']
+                    tools.each { tool ->
+                        if (sh(script: "${tool} --version", returnStatus: true) != 0) {
+                            error "${tool} is not installed or not in PATH"
+                        }
+                    }
+                    echo "All required tools are installed"
+                }
             }
         }
 
         stage('Checkout Code') {
             steps {
-                git branch: 'main', url: 'https://github.com/Meriem1601/CTAMA-Automation-DevSecOps.git', credentialsId: 'git-credentials'
+                git branch: 'main', 
+                    url: 'https://github.com/Meriem1601/CTAMA-Automation-DevSecOps.git', 
+                    credentialsId: 'git-credentials'
             }
         }
 
         stage('Terraform Init and Apply') {
             steps {
                 dir('infra') {
-                    withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials']]) {
-                        sh 'terraform init'
-                        sh 'terraform apply -auto-approve'
+                    withAWS(credentials: 'aws-credentials') {
+                        script {
+                            try {
+                                sh 'terraform init'
+                                sh 'terraform apply -auto-approve'
+                            } catch (Exception e) {
+                                error "Terraform failed: ${e.getMessage()}"
+                            }
+                        }
                     }
                 }
             }
@@ -57,8 +49,14 @@ pipeline {
         stage('Run Ansible Playbook') {
             steps {
                 dir('infra') {
-                    withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials']]) {
-                        sh 'ansible-playbook -i hosts playbook.yml'
+                    withAWS(credentials: 'aws-credentials') {
+                        script {
+                            try {
+                                sh 'ansible-playbook -i hosts playbook.yml'
+                            } catch (Exception e) {
+                                error "Ansible playbook failed: ${e.getMessage()}"
+                            }
+                        }
                     }
                 }
             }
@@ -67,10 +65,18 @@ pipeline {
         stage('Verify Deployment') {
             steps {
                 dir('infra') {
-                    sh '''
-                    # Fetch Kubernetes nodes and verify they are correctly labeled
-                    kubectl get nodes --kubeconfig=/home/ubuntu/.kube/config
-                    '''
+                    script {
+                        try {
+                            def nodes = sh(script: 'kubectl get nodes --kubeconfig=/home/ubuntu/.kube/config -o json', returnStdout: true)
+                            def nodeCount = readJSON(text: nodes).items.size()
+                            echo "Kubernetes cluster has ${nodeCount} nodes"
+                            if (nodeCount < 2) {
+                                error "Expected at least 2 nodes, but found ${nodeCount}"
+                            }
+                        } catch (Exception e) {
+                            error "Failed to verify deployment: ${e.getMessage()}"
+                        }
+                    }
                 }
             }
         }
@@ -84,7 +90,7 @@ pipeline {
             echo 'Deployment completed successfully!'
         }
         failure {
-            echo 'Deployment failed. Please check the logs.'
+            echo 'Deployment failed. Please check the logs for details.'
         }
     }
 }
