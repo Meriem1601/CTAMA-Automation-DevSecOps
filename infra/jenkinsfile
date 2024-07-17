@@ -9,21 +9,31 @@ pipeline {
     stages {
         stage('Verify Tools Installation') {
             steps {
-                script {
-                    def tools = [
-                        'terraform': 'Terraform',
-                        'ansible --version': 'Ansible',
-                        'aws --version': 'AWS CLI'
-                    ]
+                sh '''
+                echo "Verifying Terraform installation..."
+                if terraform --version > /dev/null 2>&1; then
+                    echo "Terraform is installed"
+                else
+                    echo "Terraform is NOT installed"
+                    exit 1
+                fi
 
-                    tools.each { command, name ->
-                        echo "Verifying ${name} installation..."
-                        def result = sh(script: "${command}", returnStatus: true)
-                        if (result != 0) {
-                            error "${name} is not installed or not in the PATH."
-                        }
-                    }
-                }
+                echo "Verifying Ansible installation..."
+                if ansible --version > /dev/null 2>&1; then
+                    echo "Ansible is installed"
+                else
+                    echo "Ansible is NOT installed"
+                    exit 1
+                fi
+
+                echo "Verifying AWS CLI installation..."
+                if aws --version > /dev/null 2>&1; then
+                    echo "AWS CLI is installed"
+                else
+                    echo "AWS CLI is NOT installed"
+                    exit 1
+                fi
+                '''
             }
         }
 
