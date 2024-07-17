@@ -83,5 +83,5 @@ output "eks_cluster_name" {
 }
 
 output "worker_node_ips" {
-  value = module.eks.eks_managed_node_groups.workers.private_ip
+  value = module.eks.eks_managed_node_groups.workers.private_ip_addresses
 }
