@@ -10,7 +10,7 @@ locals {
 
 module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
-  version = "3.14.0"
+  version = "5.0.0"
 
   name                 = "eks-vpc"
   cidr                 = "10.0.0.0/16"
@@ -82,6 +82,6 @@ output "eks_cluster_name" {
   value = module.eks.cluster_id
 }
 
-output "worker_nodes" {
-  value = module.eks.worker_security_group_id
+output "worker_node_ips" {
+  value = module.eks.eks_managed_node_groups.workers.private_ip
 }
