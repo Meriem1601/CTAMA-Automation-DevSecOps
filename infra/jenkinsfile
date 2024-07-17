@@ -39,14 +39,14 @@ pipeline {
 
         stage('Checkout Code') {
             steps {
-                git branch: 'main', url: 'https://github.com/Meriem1601/CTAMA-Automation-DevSecOps.git', credentialsId: "${GIT_CREDENTIALS}"
+                git branch: 'main', url: 'https://github.com/Meriem1601/CTAMA-Automation-DevSecOps.git', credentialsId: 'git-credentials'
             }
         }
 
         stage('Terraform Init and Apply') {
             steps {
                 dir('infra') {
-                    withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: "${AWS_CREDENTIALS}"]]) {
+                    withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials']]) {
                         sh 'terraform init'
                         sh 'terraform apply -auto-approve'
                     }
@@ -57,7 +57,7 @@ pipeline {
         stage('Run Ansible Playbook') {
             steps {
                 dir('infra') {
-                    withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: "${AWS_CREDENTIALS}"]]) {
+                    withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials']]) {
                         sh 'ansible-playbook -i hosts playbook.yml'
                     }
                 }
