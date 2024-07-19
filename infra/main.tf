@@ -1,87 +1,88 @@
+# variables
+variable "aws_access_key" {}
+variable "aws_secret_key" {}
+variable "key_name" {}
+variable "private_key_path" {}
+variable "region" {
+    default = "eu-north-1"
+}
+
+# Providers
 provider "aws" {
-  region = "eu-north-1"
+    access_key = var.aws_access_key
+    secret_key = var.aws_secret_key
+    region     = var.region
 }
 
-data "aws_availability_zones" "available" {}
-
-locals {
-  cluster_name = "my-eks-cluster"
-}
-
-module "vpc" {
-  source  = "terraform-aws-modules/vpc/aws"
-  version = "5.0.0"
-
-  name                 = "eks-vpc"
-  cidr                 = "10.0.0.0/16"
-  azs                  = data.aws_availability_zones.available.names
-  private_subnets      = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
-  public_subnets       = ["10.0.4.0/24", "10.0.5.0/24", "10.0.6.0/24"]
-  enable_nat_gateway   = true
-  single_nat_gateway   = true
-  enable_dns_hostnames = true
-
-  tags = {
-    "kubernetes.io/cluster/${local.cluster_name}" = "shared"
-  }
-
-  public_subnet_tags = {
-    "kubernetes.io/cluster/${local.cluster_name}" = "shared"
-    "kubernetes.io/role/elb"                      = "1"
-  }
-
-  private_subnet_tags = {
-    "kubernetes.io/cluster/${local.cluster_name}" = "shared"
-    "kubernetes.io/role/internal-elb"             = "1"
-  }
-}
-
-module "eks" {
-  source  = "terraform-aws-modules/eks/aws"
-  version = "18.26.6"
-
-  cluster_name    = local.cluster_name
-  cluster_version = "1.27"
-  subnet_ids      = module.vpc.private_subnets
-
-  vpc_id = module.vpc.vpc_id
-
-  eks_managed_node_group_defaults = {
-    ami_type       = "CUSTOM"
-    instance_types = ["t3.medium"]
-
-    attach_cluster_primary_security_group = true
-  }
-
-  eks_managed_node_groups = {
-    workers = {
-      min_size     = 2
-      max_size     = 2
-      desired_size = 2
-
-      instance_types = ["t3.medium"]
-      capacity_type  = "ON_DEMAND"
-      
-      ami_id = "ami-07a0715df72e58928"
-
-      labels = {
-        Environment = "test"
-        GithubRepo  = "terraform-aws-eks"
-        GithubOrg   = "terraform-aws-modules"
-      }
+# DATA
+data "aws_ami" "aws_linux" {
+    most_recent = true
+    owners      = ["amazon"]
+    filter {
+        name   = "name"
+        values = ["amzn2-ami-hvm-*-x86_64-gp2"]
     }
-  }
-
-  tags = {
-    Environment = "dev"
-    Terraform   = "true"
-  }
+    filter {
+        name   = "root-device-type"
+        values = ["ebs"]
+    }
+    filter {
+        name   = "virtualization-type"
+        values = ["hvm"]
+    }
 }
 
-output "eks_cluster_name" {
-  value = module.eks.cluster_id
+# RESOURCES
+# Default VPC, it won't delete on destroy
+resource "aws_default_vpc" "default" {}
+
+resource "aws_security_group" "allow_ssh_http_80" {
+    name        = "allow_ssh_http"
+    description = "Allow ssh on 22 & http on port 80"
+    vpc_id      = aws_default_vpc.default.id
+    ingress {
+        from_port   = 22
+        to_port     = 22
+        protocol    = "tcp"
+        cidr_blocks = ["0.0.0.0/0"]
+    }
+    ingress {
+        from_port   = 80
+        to_port     = 80
+        protocol    = "tcp"
+        cidr_blocks = ["0.0.0.0/0"]
+    }
+    egress {
+        from_port   = 0
+        to_port     = 0
+        protocol    = -1
+        cidr_blocks = ["0.0.0.0/0"]
+    }
 }
 
-output "worker_node_ips" {
-  value = module.eks.eks_managed_node_groups.workers.private_ip_addresses
+resource "aws_instance" "nginx" {
+    count                  = 3
+    ami                    = data.aws_ami.aws_linux.id
+    instance_type          = "t3.micro"
+    key_name               = var.key_name
+    vpc_security_group_ids = [aws_security_group.allow_ssh_http_80.id]
+
+    connection {
+        type        = "ssh"
+        host        = self.public_ip
+        user        = "ec2-user"
+        private_key = file(var.private_key_path)
+    }
+
+    provisioner "remote-exec" {
+        inline = [
+            "sudo amazon-linux-extras install nginx1 -y",
+            "sudo systemctl start nginx"
+        ]
+    }
+}
+
+# OUTPUT
+output "aws_instance_public_dns" {
+    value = [for instance in aws_instance.nginx : instance.public_dns]
 }
