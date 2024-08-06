@@ -1,0 +1,139 @@
+---
+- name: Set up Kubernetes Nodes
+  hosts: k8s-cluster
+  become: yes
+  tasks:
+    - name: Step 1 - Enable iptables Bridged Traffic
+      block:
+        - name: Create k8s.conf file
+          copy:
+            content: |
+              overlay
+              br_netfilter
+            dest: /etc/modules-load.d/k8s.conf
+        - name: Load kernel modules
+          modprobe:
+            name: "{{ item }}"
+            state: present
+          loop:
+            - overlay
+            - br_netfilter
+        - name: Create sysctl k8s.conf file
+          copy:
+            content: |
+              net.bridge.bridge-nf-call-iptables  = 1
+              net.bridge.bridge-nf-call-ip6tables = 1
+              net.ipv4.ip_forward                 = 1
+            dest: /etc/sysctl.d/k8s.conf
+        - name: Apply sysctl parameters
+          command: sysctl --system
+      notify:
+        - Print step completion
+
+    - name: Step 2 - Disable swap
+      block:
+        - name: Disable swap
+          command: swapoff -a
+        - name: Add swap disable to crontab
+          cron:
+            name: Disable swap at reboot
+            special_time: reboot
+            job: "/sbin/swapoff -a"
+      notify:
+        - Print step completion
+
+    - name: Step 3 - Install CRI-O Runtime
+      block:
+        - name: Update apt cache
+          apt:
+            update_cache: yes
+        - name: Install prerequisites
+          apt:
+            name:
+              - software-properties-common
+              - curl
+              - apt-transport-https
+              - ca-certificates
+            state: present
+        - name: Add CRI-O GPG key
+          ansible.builtin.get_url:
+            url: https://pkgs.k8s.io/addons:/cri-o:/prerelease:/main/deb/Release.key
+            dest: /etc/apt/keyrings/cri-o-apt-keyring.gpg
+            mode: '0644'
+        - name: Add CRI-O repository
+          ansible.builtin.copy:
+            content: "deb [signed-by=/etc/apt/keyrings/cri-o-apt-keyring.gpg] https://pkgs.k8s.io/addons:/cri-o:/prerelease:/main/deb/ /"
+            dest: /etc/apt/sources.list.d/cri-o.list
+        - name: Install CRI-O
+          apt:
+            name: cri-o
+            state: present
+            update_cache: yes
+        - name: Start and enable CRI-O
+          systemd:
+            name: crio
+            state: started
+            enabled: yes
+            daemon_reload: yes
+        - name: Install crictl
+          block:
+            - name: Download crictl
+              get_url:
+                url: "https://github.com/kubernetes-sigs/cri-tools/releases/download/v1.28.0/crictl-v1.28.0-linux-amd64.tar.gz"
+                dest: /tmp/crictl.tar.gz
+            - name: Extract crictl
+              unarchive:
+                src: /tmp/crictl.tar.gz
+                dest: /usr/local/bin
+                remote_src: yes
+            - name: Remove crictl archive
+              file:
+                path: /tmp/crictl.tar.gz
+                state: absent
+      notify:
+        - Print step completion
+
+    - name: Step 4 - Install Kubeadm, Kubelet, and Kubectl
+      block:
+        - name: Create Kubernetes GPG key directory
+          file:
+            path: /etc/apt/keyrings
+            state: directory
+            mode: '0755'
+        - name: Add Kubernetes GPG key
+          ansible.builtin.get_url:
+            url: https://pkgs.k8s.io/core:/stable:/v1.29/deb/Release.key
+            dest: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+            mode: '0644'
+        - name: Add Kubernetes repository
+          ansible.builtin.copy:
+            content: "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.29/deb/ /"
+            dest: /etc/apt/sources.list.d/kubernetes.list
+        - name: Install Kubernetes components
+          apt:
+            name:
+              - kubelet
+              - kubeadm
+              - kubectl
+              - jq
+            state: present
+            update_cache: yes
+        - name: Hold Kubernetes packages
+          dpkg_selections:
+            name: "{{ item }}"
+            selection: hold
+          loop:
+            - kubelet
+            - kubeadm
+            - kubectl
+        - name: Configure Kubelet
+          shell: |
+            local_ip="$(ip --json addr show ens5 | jq -r '.[0].addr_info[] | select(.family == "inet") | .local')"
+            echo "KUBELET_EXTRA_ARGS=--node-ip=$local_ip" > /etc/default/kubelet
+      notify:
+        - Print step completion
+
+  handlers:
+    - name: Print step completion
+      debug:
+        msg: "Step completed successfully"
