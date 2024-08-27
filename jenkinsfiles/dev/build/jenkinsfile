@@ -1,5 +1,5 @@
 pipeline {
-    agent {label "build-agent" }
+    agent {label "EC2-Agent" }
 
     stages {
         stage('Hello Git') {
