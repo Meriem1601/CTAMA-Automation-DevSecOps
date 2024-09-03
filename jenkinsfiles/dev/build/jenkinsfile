@@ -3,9 +3,9 @@ pipeline {
 
     environment {
         AWS_REGION = 'eu-north-1' // Your AWS region
-        ECR_REPOSITORY = 'ctama-devsecops-images' // Your ECR repository name
-        IMAGE_TAG = 'test' // The tag you used: 'my-node-app:test'
-        CREDENTIALS_FILE = '/tmp/docker_ecr_credentials.txt' // Path to the file where credentials will be stored
+        ECR_REPOSITORY_URI = '211125488393.dkr.ecr.eu-north-1.amazonaws.com/ctama-devsecops-images' // Full URI of your ECR repository
+        IMAGE_TAG = 'test' // The tag for your Docker image
+        CREDENTIALS_FILE = '/tmp/docker_ecr_credentials.txt' // Path to the file where credentials will be stored (optional)
     }
 
     stages {
@@ -26,20 +26,14 @@ pipeline {
             steps {
                 withCredentials([aws(credentialsId: 'aws-credentials', region: "${AWS_REGION}")]) {
                     script {
-                        // Get the login command from AWS CLI and store username and password in a file
-                        def loginCommand = sh(
+                        // Get the login password for ECR and log in
+                        def dockerPassword = sh(
                             script: "aws ecr get-login-password --region ${AWS_REGION}",
                             returnStdout: true
                         ).trim()
-                        
-                        def dockerUsername = 'AWS' // Username for ECR is always 'AWS'
-                        def dockerPassword = loginCommand
-
-                        // Store credentials in a dedicated file
-                        writeFile file: "${CREDENTIALS_FILE}", text: "Username: ${dockerUsername}\nPassword: ${dockerPassword}"
 
                         // Authenticate Docker to ECR
-                        sh "echo ${dockerPassword} | docker login --username ${dockerUsername} --password-stdin ${ECR_REPOSITORY}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+                        sh "echo ${dockerPassword} | docker login --username AWS --password-stdin ${ECR_REPOSITORY_URI}"
                     }
                 }
             }
@@ -49,11 +43,11 @@ pipeline {
             steps {
                 withCredentials([aws(credentialsId: 'aws-credentials', region: "${AWS_REGION}")]) {
                     script {
-                        // Tag the Docker image
-                        sh "docker tag my-node-app:${IMAGE_TAG} ${ECR_REPOSITORY}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:${IMAGE_TAG}"
+                        // Tag the Docker image with the full ECR repository URI
+                        sh "docker tag my-node-app:${IMAGE_TAG} ${ECR_REPOSITORY_URI}:${IMAGE_TAG}"
                         
                         // Push the Docker image to ECR
-                        sh "docker push ${ECR_REPOSITORY}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:${IMAGE_TAG}"
+                        sh "docker push ${ECR_REPOSITORY_URI}:${IMAGE_TAG}"
                     }
                 }
             }
@@ -62,9 +56,8 @@ pipeline {
 
     post {
         cleanup {
-            // Clean up the credentials file
+            // Clean up the credentials file if it was used
             sh "rm -f ${CREDENTIALS_FILE}"
         }
     }
 }
-
