@@ -1,5 +1,5 @@
 # you can find your node version with: node --version
-#FROM node:20
+FROM node:20
 
 # Create app directory
 WORKDIR /app
