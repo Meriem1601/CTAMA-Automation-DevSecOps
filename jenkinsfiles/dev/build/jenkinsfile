@@ -1,5 +1,12 @@
 pipeline {
-    agent {label "EC2-Agent" }
+    agent { label "EC2-Agent" }
+
+    environment {
+        AWS_REGION = 'eu-north-1' // Your AWS region
+        ECR_REPOSITORY = 'ctama-devsecops-images' // Your ECR repository name
+        IMAGE_TAG = 'test' // The tag you used: 'my-node-app:test'
+        CREDENTIALS_FILE = '/tmp/docker_ecr_credentials.txt' // Path to the file where credentials will be stored
+    }
 
     stages {
         stage('Hello Git') {
@@ -7,15 +14,57 @@ pipeline {
                 sh 'git version'
             }
         }
-         stage('Hello docker build') {
-                 steps {
-                    sh 'docker version'
+        
+        stage('Hello Docker Build') {
+            steps {
+                sh 'docker version'
+                sh 'docker build -t my-node-app:${IMAGE_TAG} .'
+            }
+        }
+        
+        stage('Authenticate Docker to ECR') {
+            steps {
+                withCredentials([aws(credentialsId: 'aws-credentials', region: "${AWS_REGION}")]) {
+                    script {
+                        // Get the login command from AWS CLI and store username and password in a file
+                        def loginCommand = sh(
+                            script: "aws ecr get-login-password --region ${AWS_REGION}",
+                            returnStdout: true
+                        ).trim()
+                        
+                        def dockerUsername = 'AWS' // Username for ECR is always 'AWS'
+                        def dockerPassword = loginCommand
+
+                        // Store credentials in a dedicated file
+                        writeFile file: "${CREDENTIALS_FILE}", text: "Username: ${dockerUsername}\nPassword: ${dockerPassword}"
+
+                        // Authenticate Docker to ECR
+                        sh "echo ${dockerPassword} | docker login --username ${dockerUsername} --password-stdin ${ECR_REPOSITORY}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+                    }
                 }
             }
-         stage('Hello kubernetes deploy') {
+        }
+
+        stage('Tag and Push Image to ECR') {
             steps {
-                sh 'kubectl version --client'
-      }
-     }
-     }
+                withCredentials([aws(credentialsId: 'aws-credentials', region: "${AWS_REGION}")]) {
+                    script {
+                        // Tag the Docker image
+                        sh "docker tag my-node-app:${IMAGE_TAG} ${ECR_REPOSITORY}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:${IMAGE_TAG}"
+                        
+                        // Push the Docker image to ECR
+                        sh "docker push ${ECR_REPOSITORY}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:${IMAGE_TAG}"
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        cleanup {
+            // Clean up the credentials file
+            sh "rm -f ${CREDENTIALS_FILE}"
+        }
+    }
 }
+
