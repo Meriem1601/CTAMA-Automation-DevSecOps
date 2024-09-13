@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-app
+  namespace: devsecops-prod
+spec:
+  replicas: 3  # Ensures high availability by running multiple instances
+  selector:
+    matchLabels:
+      app: my-app
+  template:
+    metadata:
+      labels:
+        app: my-app
+    spec:
+      serviceAccountName: devsecops-deployer  # Use the service account for RBAC permissions
+      containers:
+      - name: my-app-container
+        image: 211125488393.dkr.ecr.eu-north-1.amazonaws.com/ctama-devsecops-images:test
+        ports:
+        - containerPort: 80
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 30
+          timeoutSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 60
+          timeoutSeconds: 5
+        env:
+        - name: ENVIRONMENT
+          value: "production"

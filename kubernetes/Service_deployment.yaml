@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-app-service
+  namespace: devsecops-prod
+spec:
+  selector:
+    app: my-app  # This label selector should match labels in your Deployment
+  ports:
+  - protocol: TCP
+    port: 80           # Port that the Service exposes
+    targetPort: 80     # Port that the container listens on
+  type: LoadBalancer     # Use ClusterIP for internal access, LoadBalancer or NodePort for external access
