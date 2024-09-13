@@ -78,13 +78,13 @@ pipeline {
             steps {
                 script {
                     // Apply RBAC manifests
-                    sh "kubectl apply -f RBAC_deployment.yaml"
+                    sh "kubectl apply -f /home/ubuntu/Application-Deployment RBAC_deployment.yaml"
                     
                     // Apply Deployment manifests
-                    sh "kubectl apply -f Ctama_app_deployment.yaml"
+                    sh "kubectl apply -f /home/ubuntu/Application-Deployment Ctama_app_deployment.yaml"
                     
                     // Apply Service manifests
-                    sh "kubectl apply -f Service_deployment.yaml"
+                    sh "kubectl apply -f /home/ubuntu/Application-Deployment Service_deployment.yaml"
                 }
             }
         }
