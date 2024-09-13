@@ -147,6 +147,7 @@ pipeline {
 
         cleanup {
             // Clean up any temporary files or credentials
+            sh "rm -f ${CREDENTIALS_FILE}"
         }
         
         failure {
