@@ -10,4 +10,4 @@ spec:
   - protocol: TCP
     port: 80           # Port that the Service exposes
     targetPort: 80     # Port that the container listens on
-  type: LoadBalancer     # Use ClusterIP for internal access, LoadBalancer or NodePort for external access
+  type: NodePort     # Use ClusterIP for internal access, LoadBalancer or NodePort for external access
