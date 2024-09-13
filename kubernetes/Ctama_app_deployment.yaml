@@ -14,6 +14,8 @@ spec:
         app: my-app
     spec:
       serviceAccountName: devsecops-deployer  # Use the service account for RBAC permissions
+      imagePullSecrets:                       # This section is for pulling the image from ECR
+      - name: ecr-secret                      # Reference the secret created earlier
       containers:
       - name: my-app-container
         image: 211125488393.dkr.ecr.eu-north-1.amazonaws.com/ctama-devsecops-images:test
