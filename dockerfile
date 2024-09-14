@@ -17,4 +17,5 @@ COPY . .
 EXPOSE 3000
 
 # Tell Docker how to run your app
-CMD [ "node", "app/app.js" ]
+CMD ["npm", "start"]
+
