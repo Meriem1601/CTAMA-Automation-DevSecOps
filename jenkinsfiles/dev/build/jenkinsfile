@@ -1,73 +1,96 @@
 pipeline {
-    agent { label "EC2-Agent" }
-
+    agent {
+        label 'EC2-Agent'
+    }
     environment {
         AWS_REGION = 'eu-north-1'
-        ECR_REPOSITORY_URI = '211125488393.dkr.ecr.eu-north-1.amazonaws.com/ctama-devsecops-images'
-        IMAGE_TAG = 'v1.0.0-build' // Updated tag for build stage
+        ECR_REPOSITORY_NAME = 'ctama-devsecops-images'
+        IMAGE_TAG = 'v1.0.0-build'
+        ECR_REPOSITORY_URI = "211125488393.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY_NAME}"
     }
-
     stages {
+        stage('Declarative: Checkout SCM') {
+            steps {
+                checkout([$class: 'GitSCM',
+                    branches: [[name: '*/main']],
+                    userRemoteConfigs: [[
+                        url: 'https://github.com/Meriem1601/CTAMA-Automation-DevSecOps.git',
+                        credentialsId: 'github-ssh-key-main'
+                    ]]
+                ])
+            }
+        }
         stage('Hello Git') {
             steps {
-                sh 'git version'
-            }
-        }
-
-        stage('Hello Docker Build') {
-            steps {
-                sh 'docker version'
-                sh 'docker build -t my-node-app:${IMAGE_TAG} .'
-            }
-        }
-
-        stage('Authenticate Docker to ECR') {
-            steps {
-                withCredentials([aws(credentialsId: 'aws-credentials', region: "${AWS_REGION}")]) {
-                    script {
-                        def dockerPassword = sh(
-                            script: "aws ecr get-login-password --region ${AWS_REGION}",
-                            returnStdout: true
-                        ).trim()
-                        sh "echo ${dockerPassword} | docker login --username AWS --password-stdin ${ECR_REPOSITORY_URI}"
+                script {
+                    try {
+                        sh 'git version'
+                    } catch (Exception e) {
+                        error "Git version check failed: ${e.message}"
                     }
                 }
             }
         }
-
+        stage('Hello Docker Build') {
+            steps {
+                script {
+                    try {
+                        sh 'docker version'
+                        sh 'docker build -t my-node-app:${IMAGE_TAG} .'
+                    } catch (Exception e) {
+                        error "Docker build failed: ${e.message}"
+                    }
+                }
+            }
+        }
+        stage('Authenticate Docker to ECR') {
+            steps {
+                withCredentials([aws(credentialsId: 'aws-credentials')]) {
+                    script {
+                        try {
+                            sh 'aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPOSITORY_URI}'
+                        } catch (Exception e) {
+                            error "Docker login to ECR failed: ${e.message}"
+                        }
+                    }
+                }
+            }
+        }
         stage('Tag and Push Image to ECR') {
             steps {
-                withCredentials([aws(credentialsId: 'aws-credentials', region: "${AWS_REGION}")]) {
+                withCredentials([aws(credentialsId: 'aws-credentials')]) {
                     script {
-                        sh "docker tag my-node-app:${IMAGE_TAG} ${ECR_REPOSITORY_URI}:${IMAGE_TAG}"
-                        def imageExists = sh(
-                            script: """
-                                aws ecr describe-images \
-                                    --repository-name ${ECR_REPOSITORY_URI.split('/')[1]} \
-                                    --image-ids imageTag=${IMAGE_TAG} \
-                                    --region ${AWS_REGION} > /dev/null 2>&1; \
-                                echo \$?
-                            """,
-                            returnStdout: true
-                        ).trim()
-                        if (imageExists == '0') {
-                            echo "Image ${ECR_REPOSITORY_URI}:${IMAGE_TAG} already exists. Skipping push."
-                        } else {
-                            sh "docker push ${ECR_REPOSITORY_URI}:${IMAGE_TAG}"
+                        try {
+                            // Tag the Docker image
+                            sh "docker tag my-node-app:${IMAGE_TAG} ${ECR_REPOSITORY_URI}:${IMAGE_TAG}"
+                            
+                            // Check if the image already exists
+                            def describeResult = sh(
+                                script: "aws ecr describe-images --repository-name ${ECR_REPOSITORY_NAME} --image-ids imageTag=${IMAGE_TAG} --region ${AWS_REGION}",
+                                returnStatus: true
+                            )
+                            
+                            if (describeResult != 0) {
+                                // Push the Docker image to ECR
+                                sh "docker push ${ECR_REPOSITORY_URI}:${IMAGE_TAG}"
+                                echo "Docker image ${ECR_REPOSITORY_URI}:${IMAGE_TAG} pushed successfully."
+                            } else {
+                                echo "Image ${ECR_REPOSITORY_URI}:${IMAGE_TAG} already exists. Skipping push."
+                            }
+                        } catch (Exception e) {
+                            error "Tagging or pushing image failed: ${e.message}"
                         }
                     }
                 }
             }
         }
     }
-
     post {
-        success {
-            echo "CI Pipeline completed successfully. Docker image has been built and pushed."
-        }
-
         failure {
-            echo "CI Pipeline failed. Please check the logs for details."
+            echo 'CI Pipeline failed. Please check the logs for details.'
+        }
+        success {
+            echo 'CI Pipeline succeeded.'
         }
     }
 }
