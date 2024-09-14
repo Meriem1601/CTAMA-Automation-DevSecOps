@@ -5,7 +5,7 @@ pipeline {
     environment {
         AWS_REGION = 'eu-north-1'
         ECR_REPOSITORY_NAME = 'ctama-devsecops-images'
-        IMAGE_TAG = 'v1.1.0-build'
+        IMAGE_TAG = 'v1.2.0-build'
         ECR_REPOSITORY_URI = "211125488393.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY_NAME}"
     }
     stages {
