@@ -1,27 +1,22 @@
 pipeline {
-    agent { label "EC2-Agent" }  // Ensure the label matches your control plane node
+    agent { label "EC2-Agent" }
 
     environment {
         AWS_REGION = 'eu-north-1'
-        ECR_REPOSITORY_URI = '211125488393.dkr.ecr.eu-north-1.amazonaws.com/ctama-devsecops-images' // Full URI of your ECR repository
-        IMAGE_TAG = 'test' // The tag for the Docker image
-        KUBECONFIG = '/root/.kube/config' // Path to your kubeconfig file
+        ECR_REPOSITORY_URI = '211125488393.dkr.ecr.eu-north-1.amazonaws.com/ctama-devsecops-images'
+        IMAGE_TAG = 'v1.0.0-build' // Updated tag for build stage
     }
 
     stages {
         stage('Hello Git') {
             steps {
-                // Print the version of Git to ensure it's available
                 sh 'git version'
             }
         }
 
         stage('Hello Docker Build') {
             steps {
-                // Print the version of Docker to ensure it's available
                 sh 'docker version'
-                
-                // Build the Docker image with the specified tag
                 sh 'docker build -t my-node-app:${IMAGE_TAG} .'
             }
         }
@@ -30,13 +25,10 @@ pipeline {
             steps {
                 withCredentials([aws(credentialsId: 'aws-credentials', region: "${AWS_REGION}")]) {
                     script {
-                        // Retrieve the Docker login password from AWS ECR and authenticate Docker
                         def dockerPassword = sh(
                             script: "aws ecr get-login-password --region ${AWS_REGION}",
                             returnStdout: true
                         ).trim()
-
-                        // Log in to Docker with the obtained password
                         sh "echo ${dockerPassword} | docker login --username AWS --password-stdin ${ECR_REPOSITORY_URI}"
                     }
                 }
@@ -47,10 +39,7 @@ pipeline {
             steps {
                 withCredentials([aws(credentialsId: 'aws-credentials', region: "${AWS_REGION}")]) {
                     script {
-                        // Tag the Docker image with the full ECR repository URI
                         sh "docker tag my-node-app:${IMAGE_TAG} ${ECR_REPOSITORY_URI}:${IMAGE_TAG}"
-                        
-                        // Check if the image already exists in the ECR repository
                         def imageExists = sh(
                             script: """
                                 aws ecr describe-images \
@@ -61,78 +50,11 @@ pipeline {
                             """,
                             returnStdout: true
                         ).trim()
-
-                        // If the image already exists, skip the push step
                         if (imageExists == '0') {
                             echo "Image ${ECR_REPOSITORY_URI}:${IMAGE_TAG} already exists. Skipping push."
                         } else {
-                            // Push the Docker image to ECR
                             sh "docker push ${ECR_REPOSITORY_URI}:${IMAGE_TAG}"
                         }
-                    }
-                }
-            }
-        }
-
-        stage('Apply Kubernetes Manifests') {
-            steps {
-                script {
-                    // Apply RBAC manifests
-                    sh "kubectl apply -f kubernetes/RBAC_deployment.yaml"
-                    
-                    // Apply Deployment manifests
-                    sh "kubectl apply -f kubernetes/Ctama_app_deployment.yaml"
-                    
-                    // Apply Service manifests
-                    sh "kubectl apply -f kubernetes/Service_deployment.yaml"
-                }
-            }
-        }
-
-        stage('Verify RBAC Setup') {
-            steps {
-                script {
-                    // Check that the RBAC resources are created successfully
-                    def roleExists = sh(
-                        script: "kubectl get roles -n devsecops-prod -o jsonpath='{.items[?(@.metadata.name==\"devsecops-deployer-role\")].metadata.name}'",
-                        returnStdout: true
-                    ).trim()
-                    
-                    def roleBindingExists = sh(
-                        script: "kubectl get rolebindings -n devsecops-prod -o jsonpath='{.items[?(@.metadata.name==\"devsecops-deployer-rolebinding\")].metadata.name}'",
-                        returnStdout: true
-                    ).trim()
-                    
-                    if (roleExists == 'devsecops-deployer-role' && roleBindingExists == 'devsecops-deployer-rolebinding') {
-                        echo "RBAC resources are set up correctly."
-                    } else {
-                        error "RBAC resources are missing or incorrect."
-                    }
-                }
-            }
-        }
-
-        stage('Verify Deployment and Service') {
-            steps {
-                script {
-                    // Wait for deployment rollout to complete
-                    def rolloutStatus = sh(
-                        script: "kubectl rollout status deployment/my-app -n devsecops-prod",
-                        returnStatus: true
-                    )
-                    if (rolloutStatus != 0) {
-                        error "Deployment rollout failed or did not complete successfully."
-                    }
-
-                    // Check that the service is available and has endpoints
-                    def serviceEndpoints = sh(
-                        script: "kubectl get endpoints my-app-service -n devsecops-prod -o jsonpath='{.subsets[*].addresses[*].ip}'",
-                        returnStdout: true
-                    ).trim()
-                    if (serviceEndpoints == '') {
-                        error "Service my-app-service does not have any endpoints."
-                    } else {
-                        echo "Service my-app-service has endpoints: ${serviceEndpoints}"
                     }
                 }
             }
@@ -141,18 +63,11 @@ pipeline {
 
     post {
         success {
-            // Final message to confirm successful completion of the pipeline
-            echo "Pipeline completed successfully. All stages have been executed."
+            echo "CI Pipeline completed successfully. Docker image has been built and pushed."
         }
 
-        cleanup {
-            // Clean up any temporary files or credentials
-            sh "rm -f ${CREDENTIALS_FILE}"
-        }
-        
         failure {
-            // Message to be shown if any stage fails
-            echo "Pipeline failed. Please check the logs for details."
+            echo "CI Pipeline failed. Please check the logs for details."
         }
     }
 }
