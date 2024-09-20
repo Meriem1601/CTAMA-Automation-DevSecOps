@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-app
+  namespace: devsecops-prod
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: backend-app
+  template:
+    metadata:
+      labels:
+        app: backend-app
+    spec:
+      serviceAccountName: app-service-account
+      imagePullSecrets:
+      - name: ecr-secret  # Secret for pulling image from ECR
+      containers:
+      - name: backend-app
+        image: 211125488393.dkr.ecr.eu-north-1.amazonaws.com/ctama-devsecops-images:v1.2.0-build
+        ports:
+        - containerPort: 3000
+        env:
+        - name: MYSQL_HOST
+          value: "mysql"  # MySQL service inside the cluster
+        - name: MYSQL_PORT
+          value: "3306"
+        - name: MYSQL_USER
+          value: "root"
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: mysql-root-password
+        volumeMounts:
+        - name: app-storage
+          mountPath: /usr/src/app  # Update this path based on your app's storage needs
+      volumes:
+      - name: app-storage
+        persistentVolumeClaim:
+          claimName: backend-app-pvc
