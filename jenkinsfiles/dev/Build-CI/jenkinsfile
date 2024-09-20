@@ -15,11 +15,11 @@ pipeline {
                     try {
                         // Install dependencies
                         sh 'npm install'
-                        // Build the app
-                        sh 'npm run build'
-                        echo "Application build successful."
+                        // Start the application (you can change this if needed)
+                        sh 'npm start'
+                        echo "Application build and start successful."
                     } catch (Exception e) {
-                        error "Application build failed: ${e.message}"
+                        error "Application build or start failed: ${e.message}"
                     }
                 }
             }
