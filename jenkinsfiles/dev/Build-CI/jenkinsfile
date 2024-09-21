@@ -9,13 +9,27 @@ pipeline {
         ECR_REPOSITORY_URI = "211125488393.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY_NAME}"
     }
     stages {
+        stage('Start MySQL') {
+            steps {
+                script {
+                    try {
+                        // Start MySQL in Docker
+                        sh 'docker run --name mysql -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=mydb -p 3306:3306 -d mysql:latest'
+                        echo "MySQL container started successfully."
+                    } catch (Exception e) {
+                        error "Starting MySQL container failed: ${e.message}"
+                    }
+                }
+            }
+        }
         stage('Build Application') {
             steps {
                 script {
                     try {
                         // Install dependencies
                         sh 'npm install'
-                        // Start the application (you can change this if needed)
+                        
+                        // Start the application
                         sh 'npm start'
                         echo "Application build and start successful."
                     } catch (Exception e) {
@@ -28,7 +42,9 @@ pipeline {
             steps {
                 script {
                     try {
+                        // Build Docker image
                         sh 'docker build -t my-node-app:${IMAGE_TAG} .'
+                        echo "Docker build completed successfully."
                     } catch (Exception e) {
                         error "Docker build failed: ${e.message}"
                     }
@@ -40,7 +56,9 @@ pipeline {
                 withCredentials([aws(credentialsId: 'aws-credentials')]) {
                     script {
                         try {
+                            // Authenticate Docker to ECR
                             sh 'aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPOSITORY_URI}'
+                            echo "Docker authenticated to ECR successfully."
                         } catch (Exception e) {
                             error "Docker login to ECR failed: ${e.message}"
                         }
@@ -55,15 +73,15 @@ pipeline {
                         try {
                             // Tag the Docker image
                             sh "docker tag my-node-app:${IMAGE_TAG} ${ECR_REPOSITORY_URI}:${IMAGE_TAG}"
-                            
+
                             // Check if the image already exists
                             def describeResult = sh(
                                 script: "aws ecr describe-images --repository-name ${ECR_REPOSITORY_NAME} --image-ids imageTag=${IMAGE_TAG} --region ${AWS_REGION}",
                                 returnStatus: true
                             )
-                            
+
+                            // Push the Docker image to ECR if it does not exist
                             if (describeResult != 0) {
-                                // Push the Docker image to ECR
                                 sh "docker push ${ECR_REPOSITORY_URI}:${IMAGE_TAG}"
                                 echo "Docker image ${ECR_REPOSITORY_URI}:${IMAGE_TAG} pushed successfully."
                             } else {
