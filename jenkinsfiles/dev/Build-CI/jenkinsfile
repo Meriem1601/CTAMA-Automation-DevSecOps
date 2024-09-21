@@ -13,9 +13,26 @@ pipeline {
             steps {
                 script {
                     try {
-                        // Start MySQL in Docker
-                        sh 'docker run --name mysql -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=mydb -p 3306:3306 -d mysql:latest'
-                        echo "MySQL container started successfully."
+                        // Check if MySQL is already running
+                        def mysqlStatus = sh(
+                            script: "docker ps -f name=mysql --format '{{.Names}}'",
+                            returnStdout: true
+                        ).trim()
+                        
+                        if (mysqlStatus == 'mysql') {
+                            echo "MySQL container is already running."
+                        } else {
+                            // Start MySQL in Docker
+                            sh '''
+                                docker run --name mysql -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=mydb -p 3306:3306 -d mysql:latest
+                                echo "Waiting for MySQL to be ready..."
+                                until docker exec mysql mysqladmin ping -h 127.0.0.1 --silent; do
+                                    echo "MySQL is not ready, waiting..."
+                                    sleep 3
+                                done
+                                echo "MySQL is ready to accept connections."
+                            '''
+                        }
                     } catch (Exception e) {
                         error "Starting MySQL container failed: ${e.message}"
                     }
@@ -28,8 +45,8 @@ pipeline {
                     try {
                         // Install dependencies
                         sh 'npm install'
-                        
-                        // Start the application
+
+                        // Start the application with nodemon (or as needed)
                         sh 'npm start'
                         echo "Application build and start successful."
                     } catch (Exception e) {
@@ -38,12 +55,12 @@ pipeline {
                 }
             }
         }
-        stage('Hello Docker Build') {
+        stage('Build Docker Image') {
             steps {
                 script {
                     try {
                         // Build Docker image
-                        sh 'docker build -t my-node-app:${IMAGE_TAG} .'
+                        sh "docker build -t my-node-app:${IMAGE_TAG} ."
                         echo "Docker build completed successfully."
                     } catch (Exception e) {
                         error "Docker build failed: ${e.message}"
@@ -57,7 +74,7 @@ pipeline {
                     script {
                         try {
                             // Authenticate Docker to ECR
-                            sh 'aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPOSITORY_URI}'
+                            sh "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPOSITORY_URI}"
                             echo "Docker authenticated to ECR successfully."
                         } catch (Exception e) {
                             error "Docker login to ECR failed: ${e.message}"
@@ -74,7 +91,7 @@ pipeline {
                             // Tag the Docker image
                             sh "docker tag my-node-app:${IMAGE_TAG} ${ECR_REPOSITORY_URI}:${IMAGE_TAG}"
 
-                            // Check if the image already exists
+                            // Check if the image already exists in ECR
                             def describeResult = sh(
                                 script: "aws ecr describe-images --repository-name ${ECR_REPOSITORY_NAME} --image-ids imageTag=${IMAGE_TAG} --region ${AWS_REGION}",
                                 returnStatus: true
