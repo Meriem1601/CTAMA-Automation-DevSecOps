@@ -23,9 +23,9 @@ pipeline {
                         if (mysqlStatus == 'mysql') {
                             echo "MySQL container is already running."
                         } else {
-                            // Start MySQL in Docker with the specified database
+                            // Start MySQL in Docker
                             sh """
-                                docker run --name mysql -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=${MYSQL_DATABASE} -p 3306:3306 -d mysql:latest
+                                docker run --name mysql -e MYSQL_ROOT_PASSWORD=root -p 3306:3306 -d mysql:latest
                                 echo "Waiting for MySQL to be ready..."
                                 until docker exec mysql mysqladmin ping -h 127.0.0.1 --silent; do
                                     echo "MySQL is not ready, waiting..."
@@ -44,11 +44,21 @@ pipeline {
             steps {
                 script {
                     try {
-                        // Create the database if it doesn't exist
-                        sh """
-                            docker exec mysql mysql -uroot -proot -e "CREATE DATABASE IF NOT EXISTS ${MYSQL_DATABASE};"
-                            echo "Database ${MYSQL_DATABASE} initialized."
-                        """
+                        // Check if the database already exists
+                        def dbExists = sh(
+                            script: "docker exec mysql mysql -uroot -proot -e 'SHOW DATABASES LIKE \"${MYSQL_DATABASE}\";'",
+                            returnStdout: true
+                        ).trim()
+
+                        if (!dbExists) {
+                            // Create the database if it doesn't exist
+                            sh """
+                                docker exec mysql mysql -uroot -proot -e "CREATE DATABASE ${MYSQL_DATABASE};"
+                                echo "Database ${MYSQL_DATABASE} initialized."
+                            """
+                        } else {
+                            echo "Database ${MYSQL_DATABASE} already exists. Skipping creation."
+                        }
                     } catch (Exception e) {
                         error "Database initialization failed: ${e.message}"
                     }
@@ -62,9 +72,9 @@ pipeline {
                         // Install dependencies
                         sh 'npm install'
 
-                        // Start the application with nodemon (or as needed)
-                        sh 'npm start'
-                        echo "Application build and start successful."
+                        // Start the application in the background
+                        sh 'nohup npm start &'
+                        echo "Application is running successfully."
                     } catch (Exception e) {
                         error "Application build or start failed: ${e.message}"
                     }
