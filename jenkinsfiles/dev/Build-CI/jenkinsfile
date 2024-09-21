@@ -7,6 +7,7 @@ pipeline {
         ECR_REPOSITORY_NAME = 'ctama-devsecops-images'
         IMAGE_TAG = 'v1.2.0-build'
         ECR_REPOSITORY_URI = "211125488393.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY_NAME}"
+        MYSQL_DATABASE = 'mydatabase'
     }
     stages {
         stage('Start MySQL') {
@@ -22,19 +23,34 @@ pipeline {
                         if (mysqlStatus == 'mysql') {
                             echo "MySQL container is already running."
                         } else {
-                            // Start MySQL in Docker
-                            sh '''
-                                docker run --name mysql -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=mydb -p 3306:3306 -d mysql:latest
+                            // Start MySQL in Docker with the specified database
+                            sh """
+                                docker run --name mysql -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=${MYSQL_DATABASE} -p 3306:3306 -d mysql:latest
                                 echo "Waiting for MySQL to be ready..."
                                 until docker exec mysql mysqladmin ping -h 127.0.0.1 --silent; do
                                     echo "MySQL is not ready, waiting..."
                                     sleep 3
                                 done
                                 echo "MySQL is ready to accept connections."
-                            '''
+                            """
                         }
                     } catch (Exception e) {
                         error "Starting MySQL container failed: ${e.message}"
+                    }
+                }
+            }
+        }
+        stage('Initialize Database') {
+            steps {
+                script {
+                    try {
+                        // Create the database if it doesn't exist
+                        sh """
+                            docker exec mysql mysql -uroot -proot -e "CREATE DATABASE IF NOT EXISTS ${MYSQL_DATABASE};"
+                            echo "Database ${MYSQL_DATABASE} initialized."
+                        """
+                    } catch (Exception e) {
+                        error "Database initialization failed: ${e.message}"
                     }
                 }
             }
