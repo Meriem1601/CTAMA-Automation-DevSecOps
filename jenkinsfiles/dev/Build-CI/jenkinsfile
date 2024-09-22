@@ -5,7 +5,7 @@ pipeline {
     environment {
         AWS_REGION = 'eu-north-1'
         ECR_REPOSITORY_NAME = 'ctama-devsecops-images'
-        IMAGE_TAG = 'v1.2.0-build'
+        IMAGE_TAG = 'v1.2.0-build' // Update to your preferred image tag
         ECR_REPOSITORY_URI = "211125488393.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY_NAME}"
         MYSQL_DATABASE = 'mydatabase'
     }
@@ -65,6 +65,22 @@ pipeline {
                 }
             }
         }
+        stage('Build Application') {
+            steps {
+                script {
+                    try {
+                        // Install dependencies
+                        sh 'npm install'
+
+                        // Start the application in the background
+                        sh 'nohup npm start &'
+                        echo "Application is running successfully."
+                    } catch (Exception e) {
+                        error "Application build or start failed: ${e.message}"
+                    }
+                }
+            }
+        }
         stage('SonarQube - SAST') {
             steps {
                 script {
@@ -84,37 +100,6 @@ pipeline {
                 }
             }
         }
-        stage('Build Application') {
-            steps {
-                script {
-                    try {
-                        // Install dependencies
-                        sh 'npm install'
-
-                        // Start the application in the background
-                        sh 'nohup npm start &'
-                        echo "Application is running successfully."
-                    } catch (Exception e) {
-                        error "Application build or start failed: ${e.message}"
-                    }
-                }
-            }
-        }
-        // stage('OWASP Dependency-Check Vulnerabilities') {
-        //     steps {
-        //         dependencyCheck additionalArguments: ''' 
-        //             -o '.reports/' 
-        //             -s './' 
-        //             -f 'ALL' 
-        //             --prettyPrint 
-        //             --enableExperimental 
-        //             --noupdate 
-        //             --format HTML,XML,JSON
-        //         ''', odcInstallation: 'OWASP Dependency-Check Vulnerabilities'
-
-        //         dependencyCheckPublisher pattern: 'dependency-check-report.xml'
-        //     }
-        // }
         stage('Build Docker Image') {
             steps {
                 script {
@@ -124,6 +109,27 @@ pipeline {
                         echo "Docker build completed successfully."
                     } catch (Exception e) {
                         error "Docker build failed: ${e.message}"
+                    }
+                }
+            }
+        }
+        stage('Trivy Scan') {
+            steps {
+                script {
+                    try {
+                        // Scan the Docker image with Trivy
+                        def scanResult = sh(
+                            script: "trivy image --exit-code 1 --severity HIGH,CRITICAL --format json --output trivy-report.json my-node-app:${IMAGE_TAG}",
+                            returnStatus: true
+                        )
+
+                        if (scanResult == 0) {
+                            echo "Trivy scan completed with no high or critical vulnerabilities."
+                        } else {
+                            error "Trivy scan found high or critical vulnerabilities. Please check the report in trivy-report.json."
+                        }
+                    } catch (Exception e) {
+                        error "Trivy scan failed: ${e.message}"
                     }
                 }
             }
