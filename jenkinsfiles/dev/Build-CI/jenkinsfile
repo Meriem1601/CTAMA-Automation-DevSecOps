@@ -100,6 +100,26 @@ pipeline {
                 }
             }
         }
+        stage('OWASP Dependency-Check') {
+            steps {
+                script {
+                    try {
+                        // Run OWASP Dependency-Check
+                        sh """
+                            /opt/dependency-check/bin/dependency-check.sh \
+                              --project "My Node App" \
+                              --scan ./ \
+                              --out ./reports \
+                              --format HTML \
+                              --failOnCVSS 7
+                        """
+                        echo "OWASP Dependency-Check completed successfully."
+                    } catch (Exception e) {
+                        error "OWASP Dependency-Check failed: ${e.message}"
+                    }
+                }
+            }
+        }
         stage('Build Docker Image') {
             steps {
                 script {
