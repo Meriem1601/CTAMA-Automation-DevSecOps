@@ -19,7 +19,7 @@ pipeline {
                             script: "docker ps -f name=mysql --format '{{.Names}}'",
                             returnStdout: true
                         ).trim()
-                        
+
                         if (mysqlStatus == 'mysql') {
                             echo "MySQL container is already running."
                         } else {
@@ -100,24 +100,19 @@ pipeline {
                 }
             }
         }
-        stage('OWASP Dependency-Check') {
+        stage('OWASP Dependency-Check Vulnerabilities') {
             steps {
-                script {
-                    try {
-                        // Run OWASP Dependency-Check
-                        sh """
-                            /opt/dependency-check/bin/dependency-check.sh \
-                              --project "My Node App" \
-                              --scan ./ \
-                              --out ./reports \
-                              --format HTML \
-                              --failOnCVSS 7
-                        """
-                        echo "OWASP Dependency-Check completed successfully."
-                    } catch (Exception e) {
-                        error "OWASP Dependency-Check failed: ${e.message}"
-                    }
-                }
+                dependencyCheck additionalArguments: ''' 
+                    -o './' 
+                    -s './' 
+                    -f 'ALL' 
+                    --prettyPrint 
+                    --enableExperimental 
+                    --noupdate 
+                    --format HTML,XML,JSON
+                ''', odcInstallation: 'OWASP Dependency-Check Vulnerabilities'
+
+                dependencyCheckPublisher pattern: 'dependency-check-report.xml'
             }
         }
         stage('Build Docker Image') {
