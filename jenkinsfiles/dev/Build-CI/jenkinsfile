@@ -65,6 +65,25 @@ pipeline {
                 }
             }
         }
+        stage('SonarQube - SAST') {
+            steps {
+                script {
+                    try {
+                        // Run SonarQube analysis
+                        sh """
+                            sonar-scanner \
+                              -Dsonar.projectKey=CTAMA-Automation-DevSecOps \
+                              -Dsonar.sources=. \
+                              -Dsonar.host.url=http://16.16.118.25:9000 \
+                              -Dsonar.token=sqp_8f9c8b21d8f7065aa3e059f4ba0a739af3760009
+                        """
+                        echo "SonarQube analysis completed successfully."
+                    } catch (Exception e) {
+                        error "SonarQube analysis failed: ${e.message}"
+                    }
+                }
+            }
+        }
         stage('Build Application') {
             steps {
                 script {
