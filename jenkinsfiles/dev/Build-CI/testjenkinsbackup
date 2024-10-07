@@ -1,0 +1,189 @@
+pipeline {
+    agent {
+        label 'EC2-Agent'
+    }
+    environment {
+        AWS_REGION = 'eu-north-1'
+        ECR_REPOSITORY_NAME = 'ctama-devsecops-images'
+        IMAGE_TAG = 'v1.2.0-build' // Update to your preferred image tag
+        ECR_REPOSITORY_URI = "211125488393.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY_NAME}"
+        MYSQL_DATABASE = 'mydatabase'
+    }
+    stages {
+        stage('Start MySQL') {
+            steps {
+                script {
+                    try {
+                        // Check if MySQL is already running
+                        def mysqlStatus = sh(
+                            script: "docker ps -f name=mysql --format '{{.Names}}'",
+                            returnStdout: true
+                        ).trim()
+
+                        if (mysqlStatus == 'mysql') {
+                            echo "MySQL container is already running."
+                        } else {
+                            // Start MySQL in Docker
+                            sh """
+                                docker run --name mysql -e MYSQL_ROOT_PASSWORD=root -p 3306:3306 -d mysql:latest
+                                echo "Waiting for MySQL to be ready..."
+                                until docker exec mysql mysqladmin ping -h 127.0.0.1 --silent; do
+                                    echo "MySQL is not ready, waiting..."
+                                    sleep 3
+                                done
+                                echo "MySQL is ready to accept connections."
+                            """
+                        }
+                    } catch (Exception e) {
+                        error "Starting MySQL container failed: ${e.message}"
+                    }
+                }
+            }
+        }
+        stage('Initialize Database') {
+            steps {
+                script {
+                    try {
+                        // Check if the database already exists
+                        def dbExists = sh(
+                            script: "docker exec mysql mysql -uroot -proot -e 'SHOW DATABASES LIKE \"${MYSQL_DATABASE}\";'",
+                            returnStdout: true
+                        ).trim()
+
+                        if (!dbExists) {
+                            // Create the database if it doesn't exist
+                            sh """
+                                docker exec mysql mysql -uroot -proot -e "CREATE DATABASE ${MYSQL_DATABASE};"
+                                echo "Database ${MYSQL_DATABASE} initialized."
+                            """
+                        } else {
+                            echo "Database ${MYSQL_DATABASE} already exists. Skipping creation."
+                        }
+                    } catch (Exception e) {
+                        error "Database initialization failed: ${e.message}"
+                    }
+                }
+            }
+        }
+        stage('Build Application') {
+            steps {
+                script {
+                    try {
+                        // Install dependencies
+                        sh 'npm install'
+
+                        // Start the application in the background
+                        sh 'nohup npm start &'
+                        echo "Application is running successfully."
+                    } catch (Exception e) {
+                        error "Application build or start failed: ${e.message}"
+                    }
+                }
+            }
+        }
+        stage('SonarQube - SAST') {
+            steps {
+                script {
+                    try {
+                        // Run SonarQube analysis
+                        sh """
+                            sonar-scanner \
+                              -Dsonar.projectKey=CTAMA-Automation-DevSecOps \
+                              -Dsonar.sources=. \
+                              -Dsonar.host.url=http://16.16.118.25:9000 \
+                              -Dsonar.token=sqp_8f9c8b21d8f7065aa3e059f4ba0a739af3760009
+                        """
+                        echo "SonarQube analysis completed successfully."
+                    } catch (Exception e) {
+                        error "SonarQube analysis failed: ${e.message}"
+                    }
+                }
+            }
+        }
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    try {
+                        // Build Docker image
+                        sh "docker build -t my-node-app:${IMAGE_TAG} ."
+                        echo "Docker build completed successfully."
+                    } catch (Exception e) {
+                        error "Docker build failed: ${e.message}"
+                    }
+                }
+            }
+        }
+        stage('Trivy Scan') {
+            steps {
+                script {
+                    try {
+                        // Scan the Docker image with Trivy
+                        def scanResult = sh(
+                            script: "trivy image --exit-code 1 --severity HIGH,CRITICAL --format json --output trivy-report.json my-node-app:${IMAGE_TAG}",
+                            returnStatus: true
+                        )
+
+                        if (scanResult == 0) {
+                            echo "Trivy scan completed with no high or critical vulnerabilities."
+                        } else {
+                            error "Trivy scan found high or critical vulnerabilities. Please check the report in trivy-report.json."
+                        }
+                    } catch (Exception e) {
+                        error "Trivy scan failed: ${e.message}"
+                    }
+                }
+            }
+        }
+        stage('Authenticate Docker to ECR') {
+            steps {
+                withCredentials([aws(credentialsId: 'aws-credentials')]) {
+                    script {
+                        try {
+                            // Authenticate Docker to ECR
+                            sh "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPOSITORY_URI}"
+                            echo "Docker authenticated to ECR successfully."
+                        } catch (Exception e) {
+                            error "Docker login to ECR failed: ${e.message}"
+                        }
+                    }
+                }
+            }
+        }
+        stage('Tag and Push Image to ECR') {
+            steps {
+                withCredentials([aws(credentialsId: 'aws-credentials')]) {
+                    script {
+                        try {
+                            // Tag the Docker image
+                            sh "docker tag my-node-app:${IMAGE_TAG} ${ECR_REPOSITORY_URI}:${IMAGE_TAG}"
+
+                            // Check if the image already exists in ECR
+                            def describeResult = sh(
+                                script: "aws ecr describe-images --repository-name ${ECR_REPOSITORY_NAME} --image-ids imageTag=${IMAGE_TAG} --region ${AWS_REGION}",
+                                returnStatus: true
+                            )
+
+                            // Push the Docker image to ECR if it does not exist
+                            if (describeResult != 0) {
+                                sh "docker push ${ECR_REPOSITORY_URI}:${IMAGE_TAG}"
+                                echo "Docker image ${ECR_REPOSITORY_URI}:${IMAGE_TAG} pushed successfully."
+                            } else {
+                                echo "Image ${ECR_REPOSITORY_URI}:${IMAGE_TAG} already exists. Skipping push."
+                            }
+                        } catch (Exception e) {
+                            error "Tagging or pushing image failed: ${e.message}"
+                        }
+                    }
+                }
+            }
+        }
+    }
+    post {
+        failure {
+            echo 'CI Pipeline failed. Please check the logs for details.'
+        }
+        success {
+            echo 'CI Pipeline succeeded.'
+        }
+    }
+}
