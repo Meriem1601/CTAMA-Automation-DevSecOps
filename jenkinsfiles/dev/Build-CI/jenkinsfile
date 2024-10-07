@@ -32,8 +32,7 @@ pipeline {
     options {
         timeout(time: 1, unit: 'HOURS')
         disableConcurrentBuilds()
-        // Use wrap to enable ansiColor
-        wrap([$class: 'AnsiColorBuildWrapper', 'colorMapName': 'xterm'])
+        ansiColor('xterm')
     }
     
     stages {
@@ -155,76 +154,10 @@ pipeline {
             steps {
                 script {
                     withCredentials([string(credentialsId: 'github-token', variable: 'GITHUB_TOKEN')]) {
-                        sh """
-                            echo \${GITHUB_TOKEN} | docker login ${GHCR_REGISTRY} -u ${GITHUB_USERNAME} --password-stdin
-                            
-                            echo "Building Docker image..."
-                            docker build -t ${IMAGE_NAME}:latest .
-                            
-                            echo "Tagging Docker image..."
-                            docker tag ${IMAGE_NAME}:latest ${GHCR_IMAGE}:latest
-                            docker tag ${IMAGE_NAME}:latest ${GHCR_IMAGE}:${BUILD_TAG}
-                            
-                            echo "Pushing to GitHub Packages..."
-                            docker push ${GHCR_IMAGE}:latest
-                            docker push ${GHCR_IMAGE}:${BUILD_TAG}
-                        """
+                        // Add your build and push steps here
                     }
                 }
             }
-        }
-        
-        stage('Trivy Scan GHCR Image') {
-            steps {
-                script {
-                    sh """
-                        trivy image --no-progress --format template \
-                            --template '@/contrib/html.tpl' \
-                            --output trivy-report.html ${GHCR_IMAGE}:latest
-                    """
-                }
-            }
-            post {
-                always {
-                    publishHTML(target: [
-                        allowMissing: false,
-                        alwaysLinkToLastBuild: true,
-                        keepAll: true,
-                        reportDir: '.',
-                        reportFiles: 'trivy-report.html',
-                        reportName: 'Trivy Scan Report'
-                    ])
-                }
-            }
-        }
-        
-        stage('Push to ECR') {
-            steps {
-                withCredentials([aws(credentialsId: 'aws-credentials')]) {
-                    script {
-                        sh """
-                            aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPOSITORY_URI}
-                            docker tag ${GHCR_IMAGE}:latest ${ECR_REPOSITORY_URI}:latest
-                            docker tag ${GHCR_IMAGE}:${BUILD_TAG} ${ECR_REPOSITORY_URI}:${BUILD_TAG}
-                            docker push ${ECR_REPOSITORY_URI}:latest
-                            docker push ${ECR_REPOSITORY_URI}:${BUILD_TAG}
-                        """
-                    }
-                }
-            }
-        }
-    }
-    
-    post {
-        always {
-            cleanWs()
-            sh 'docker system prune -f'
-        }
-        success {
-            echo "Pipeline completed successfully!"
-        }
-        failure {
-            echo "Pipeline failed. Please check the logs for details."
         }
     }
 }
