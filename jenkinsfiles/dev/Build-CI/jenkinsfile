@@ -32,7 +32,8 @@ pipeline {
     options {
         timeout(time: 1, unit: 'HOURS')
         disableConcurrentBuilds()
-        ansiColor('xterm')
+        // Use wrap to enable ansiColor
+        wrap([$class: 'AnsiColorBuildWrapper', 'colorMapName': 'xterm'])
     }
     
     stages {
