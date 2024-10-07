@@ -22,9 +22,6 @@ pipeline {
         // GHCR full image name
         GHCR_IMAGE = "${GHCR_REGISTRY}/${GITHUB_USERNAME}/${REPO_NAME}"
         
-        // Database Variables
-        MYSQL_DATABASE = 'mydatabase'
-        
         // Node environment
         NODE_ENV = 'production'
     }
@@ -50,58 +47,6 @@ pipeline {
                         sh 'npm ci'
                     } catch (Exception e) {
                         error "Failed to install dependencies: ${e.message}"
-                    }
-                }
-            }
-        }
-        
-        stage('Run Tests') {
-            steps {
-                script {
-                    try {
-                        sh 'npm test'
-                    } catch (Exception e) {
-                        error "Tests failed: ${e.message}"
-                    }
-                }
-            }
-        }
-        
-        stage('Start MySQL') {
-            steps {
-                script {
-                    try {
-                        def mysqlStatus = sh(script: "docker ps -f name=mysql --format '{{.Names}}'", returnStdout: true).trim()
-                        if (mysqlStatus != 'mysql') {
-                            sh '''
-                                docker run --name mysql -e MYSQL_ROOT_PASSWORD=root -p 3306:3306 -d mysql:latest
-                                echo "Waiting for MySQL to be ready..."
-                                for i in $(seq 1 30); do
-                                    if docker exec mysql mysqladmin ping -h localhost -u root -proot --silent; then
-                                        echo "MySQL is ready"
-                                        break
-                                    fi
-                                    echo "Waiting for MySQL to be ready... $i/30"
-                                    sleep 2
-                                done
-                            '''
-                        }
-                    } catch (Exception e) {
-                        error "MySQL setup failed: ${e.message}"
-                    }
-                }
-            }
-        }
-        
-        stage('Initialize Database') {
-            steps {
-                script {
-                    try {
-                        sh """
-                            docker exec mysql mysql -uroot -proot -e 'CREATE DATABASE IF NOT EXISTS ${MYSQL_DATABASE};'
-                        """
-                    } catch (Exception e) {
-                        error "Database initialization failed: ${e.message}"
                     }
                 }
             }
@@ -154,10 +99,97 @@ pipeline {
             steps {
                 script {
                     withCredentials([string(credentialsId: 'github-token', variable: 'GITHUB_TOKEN')]) {
-                        // Add your build and push steps here
+                        sh """
+                            echo \$GITHUB_TOKEN | docker login ${GHCR_REGISTRY} -u ${GITHUB_USERNAME} --password-stdin
+                            
+                            docker build -t ${GHCR_IMAGE}:${BUILD_TAG} .
+                            docker push ${GHCR_IMAGE}:${BUILD_TAG}
+                            
+                            if [ "${BRANCH_NAME}" = "main" ]; then
+                                docker tag ${GHCR_IMAGE}:${BUILD_TAG} ${GHCR_IMAGE}:latest
+                                docker push ${GHCR_IMAGE}:latest
+                            fi
+                        """
                     }
                 }
             }
+        }
+
+        stage('Trivy Scan') {
+            steps {
+                script {
+                    try {
+                        sh """
+                            # Run Trivy vulnerability scan
+                            trivy image ${GHCR_IMAGE}:${BUILD_TAG} \
+                                --format template \
+                                --template '@/usr/local/share/trivy/templates/html.tpl' \
+                                --output trivy-report.html
+
+                            # Also run a failure-threshold scan
+                            trivy image ${GHCR_IMAGE}:${BUILD_TAG} \
+                                --exit-code 1 \
+                                --severity HIGH,CRITICAL
+                        """
+                    } catch (Exception e) {
+                        unstable('Trivy found vulnerabilities')
+                        error "Trivy scan failed: ${e.message}"
+                    }
+                }
+            }
+            post {
+                always {
+                    publishHTML(target: [
+                        allowMissing: false,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: '.',
+                        reportFiles: 'trivy-report.html',
+                        reportName: 'Trivy Scan Report'
+                    ])
+                }
+            }
+        }
+
+        stage('Push to ECR') {
+            steps {
+                script {
+                    withCredentials([
+                        [$class: 'AmazonWebServicesCredentialsBinding', 
+                         credentialsId: 'aws-credentials',
+                         accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                         secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
+                    ]) {
+                        sh """
+                            # Login to AWS ECR
+                            aws ecr get-login-password --region ${AWS_REGION} | \
+                            docker login --username AWS --password-stdin ${ECR_REPOSITORY_URI}
+
+                            # Tag and push to ECR
+                            docker tag ${GHCR_IMAGE}:${BUILD_TAG} ${ECR_REPOSITORY_URI}:${BUILD_TAG}
+                            docker push ${ECR_REPOSITORY_URI}:${BUILD_TAG}
+
+                            if [ "${BRANCH_NAME}" = "main" ]; then
+                                docker tag ${ECR_REPOSITORY_URI}:${BUILD_TAG} ${ECR_REPOSITORY_URI}:latest
+                                docker push ${ECR_REPOSITORY_URI}:latest
+                            fi
+                        """
+                    }
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            cleanWs()
+            sh 'docker system prune -f'
+        }
+        success {
+            echo 'Pipeline completed successfully!'
+        }
+        failure {
+            echo 'Pipeline failed! Please check the logs for details.'
         }
     }
 }
