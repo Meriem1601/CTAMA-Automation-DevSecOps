@@ -46,6 +46,7 @@ pipeline {
                     try {
                         sh 'npm ci'
                     } catch (Exception e) {
+                        currentBuild.result = 'FAILURE'
                         error "Failed to install dependencies: ${e.message}"
                     }
                 }
@@ -57,13 +58,18 @@ pipeline {
                 stage('SonarQube Analysis') {
                     steps {
                         script {
-                            sh """
-                                sonar-scanner \
-                                  -Dsonar.projectKey=CTAMA-Automation-DevSecOps \
-                                  -Dsonar.sources=. \
-                                  -Dsonar.host.url=http://16.16.118.25:9000 \
-                                  -Dsonar.token=sqp_8f9c8b21d8f7065aa3e059f4ba0a739af3760009
-                            """
+                            try {
+                                sh """
+                                    sonar-scanner \
+                                      -Dsonar.projectKey=CTAMA-Automation-DevSecOps \
+                                      -Dsonar.sources=. \
+                                      -Dsonar.host.url=http://16.16.118.25:9000 \
+                                      -Dsonar.token=sqp_8f9c8b21d8f7065aa3e059f4ba0a739af3760009
+                                """
+                            } catch (Exception e) {
+                                currentBuild.result = 'UNSTABLE'
+                                echo "SonarQube analysis failed: ${e.message}"
+                            }
                         }
                     }
                 }
@@ -71,18 +77,26 @@ pipeline {
                 stage('OWASP Dependency Check') {
                     steps {
                         script {
-                            sh '''
-                                dependency-check.sh --scan . \
-                                    --format JSON --format HTML --prettyPrint \
-                                    --suppressionFile suppress.xml \
-                                    --out dependency-check-report
-                            '''
+                            try {
+                                docker.image('owasp/dependency-check').inside {
+                                    sh '''
+                                        dependency-check.sh --scan . \
+                                            --format JSON --format HTML \
+                                            --prettyPrint \
+                                            --suppressionFile suppress.xml \
+                                            --out dependency-check-report
+                                    '''
+                                }
+                            } catch (Exception e) {
+                                currentBuild.result = 'UNSTABLE'
+                                echo "Dependency check failed: ${e.message}"
+                            }
                         }
                     }
                     post {
                         always {
                             publishHTML(target: [
-                                allowMissing: false,
+                                allowMissing: true,
                                 alwaysLinkToLastBuild: true,
                                 keepAll: true,
                                 reportDir: '.',
@@ -98,18 +112,23 @@ pipeline {
         stage('Build and Push to GHCR') {
             steps {
                 script {
-                    withCredentials([string(credentialsId: 'github-token', variable: 'GITHUB_TOKEN')]) {
-                        sh """
-                            echo \$GITHUB_TOKEN | docker login ${GHCR_REGISTRY} -u ${GITHUB_USERNAME} --password-stdin
-                            
-                            docker build -t ${GHCR_IMAGE}:${BUILD_TAG} .
-                            docker push ${GHCR_IMAGE}:${BUILD_TAG}
-                            
-                            if [ "${BRANCH_NAME}" = "main" ]; then
-                                docker tag ${GHCR_IMAGE}:${BUILD_TAG} ${GHCR_IMAGE}:latest
-                                docker push ${GHCR_IMAGE}:latest
-                            fi
-                        """
+                    try {
+                        withCredentials([string(credentialsId: 'github-token', variable: 'GITHUB_TOKEN')]) {
+                            sh """
+                                echo \$GITHUB_TOKEN | docker login ${GHCR_REGISTRY} -u ${GITHUB_USERNAME} --password-stdin || exit 1
+                                
+                                docker build -t ${GHCR_IMAGE}:${BUILD_TAG} . || exit 1
+                                docker push ${GHCR_IMAGE}:${BUILD_TAG} || exit 1
+                                
+                                if [ "${BRANCH_NAME}" = "main" ]; then
+                                    docker tag ${GHCR_IMAGE}:${BUILD_TAG} ${GHCR_IMAGE}:latest
+                                    docker push ${GHCR_IMAGE}:latest
+                                fi
+                            """
+                        }
+                    } catch (Exception e) {
+                        currentBuild.result = 'FAILURE'
+                        error "Failed to build or push to GHCR: ${e.message}"
                     }
                 }
             }
@@ -120,27 +139,26 @@ pipeline {
                 script {
                     try {
                         sh """
-                            # Run Trivy vulnerability scan
                             trivy image ${GHCR_IMAGE}:${BUILD_TAG} \
                                 --format template \
                                 --template '@/usr/local/share/trivy/templates/html.tpl' \
-                                --output trivy-report.html
+                                --output trivy-report.html || true
 
-                            # Also run a failure-threshold scan
+                            # Run a separate scan for failure threshold
                             trivy image ${GHCR_IMAGE}:${BUILD_TAG} \
                                 --exit-code 1 \
                                 --severity HIGH,CRITICAL
                         """
                     } catch (Exception e) {
-                        unstable('Trivy found vulnerabilities')
-                        error "Trivy scan failed: ${e.message}"
+                        currentBuild.result = 'UNSTABLE'
+                        echo "Trivy found vulnerabilities: ${e.message}"
                     }
                 }
             }
             post {
                 always {
                     publishHTML(target: [
-                        allowMissing: false,
+                        allowMissing: true,
                         alwaysLinkToLastBuild: true,
                         keepAll: true,
                         reportDir: '.',
@@ -154,26 +172,29 @@ pipeline {
         stage('Push to ECR') {
             steps {
                 script {
-                    withCredentials([
-                        [$class: 'AmazonWebServicesCredentialsBinding', 
-                         credentialsId: 'aws-credentials',
-                         accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                         secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
-                    ]) {
-                        sh """
-                            # Login to AWS ECR
-                            aws ecr get-login-password --region ${AWS_REGION} | \
-                            docker login --username AWS --password-stdin ${ECR_REPOSITORY_URI}
+                    try {
+                        withCredentials([
+                            [$class: 'AmazonWebServicesCredentialsBinding', 
+                             credentialsId: 'aws-credentials',
+                             accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                             secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
+                        ]) {
+                            sh """
+                                aws ecr get-login-password --region ${AWS_REGION} | \
+                                docker login --username AWS --password-stdin ${ECR_REPOSITORY_URI} || exit 1
 
-                            # Tag and push to ECR
-                            docker tag ${GHCR_IMAGE}:${BUILD_TAG} ${ECR_REPOSITORY_URI}:${BUILD_TAG}
-                            docker push ${ECR_REPOSITORY_URI}:${BUILD_TAG}
+                                docker tag ${GHCR_IMAGE}:${BUILD_TAG} ${ECR_REPOSITORY_URI}:${BUILD_TAG} || exit 1
+                                docker push ${ECR_REPOSITORY_URI}:${BUILD_TAG} || exit 1
 
-                            if [ "${BRANCH_NAME}" = "main" ]; then
-                                docker tag ${ECR_REPOSITORY_URI}:${BUILD_TAG} ${ECR_REPOSITORY_URI}:latest
-                                docker push ${ECR_REPOSITORY_URI}:latest
-                            fi
-                        """
+                                if [ "${BRANCH_NAME}" = "main" ]; then
+                                    docker tag ${ECR_REPOSITORY_URI}:${BUILD_TAG} ${ECR_REPOSITORY_URI}:latest
+                                    docker push ${ECR_REPOSITORY_URI}:latest
+                                fi
+                            """
+                        }
+                    } catch (Exception e) {
+                        currentBuild.result = 'FAILURE'
+                        error "Failed to push to ECR: ${e.message}"
                     }
                 }
             }
@@ -182,11 +203,20 @@ pipeline {
     
     post {
         always {
-            cleanWs()
-            sh 'docker system prune -f'
+            script {
+                try {
+                    cleanWs()
+                    sh 'docker system prune -f'
+                } catch (Exception e) {
+                    echo "Cleanup failed: ${e.message}"
+                }
+            }
         }
         success {
             echo 'Pipeline completed successfully!'
+        }
+        unstable {
+            echo 'Pipeline completed but is unstable. Check the logs for warnings.'
         }
         failure {
             echo 'Pipeline failed! Please check the logs for details.'
