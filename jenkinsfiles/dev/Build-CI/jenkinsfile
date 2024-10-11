@@ -2,50 +2,54 @@ pipeline {
     agent {
         label 'EC2-Agent'
     }
-    
+
     environment {
         // AWS Variables
         AWS_REGION = 'eu-north-1'
         ECR_REPOSITORY_NAME = 'ctama-devsecops-images'
         ECR_REPOSITORY_URI = "211125488393.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY_NAME}"
-        
+
         // GitHub Container Registry Variables
         GHCR_REGISTRY = 'ghcr.io'
         GITHUB_USERNAME = 'meriem1601'
         REPO_NAME = 'ctama-automation-devsecops'
         IMAGE_NAME = 'myapp'
-        
+
         // Version and tag variables
         APP_VERSION = 'v1.2.0'
         BUILD_TAG = "${APP_VERSION}-${BUILD_NUMBER}"
-        
+
         // GHCR full image name
         GHCR_IMAGE = "${GHCR_REGISTRY}/${GITHUB_USERNAME}/${REPO_NAME}"
-        
+
         // Node environment
         NODE_ENV = 'production'
-        
-        // Dependency Check and Trivy Cache and Reports directories
+
+        // Dependency Check and Trivy directories
         DEPENDENCY_CHECK_HOME = '/opt/dependency-check'
         DEPENDENCY_CHECK_REPORTS = '/var/jenkins_home/dependency-check-reports'
         TRIVY_CACHE_DIR = '/var/jenkins_home/trivy-cache'
         TRIVY_REPORTS_DIR = '/var/jenkins_home/trivy-reports'
     }
-    
+
     options {
         timeout(time: 1, unit: 'HOURS')
         disableConcurrentBuilds()
         ansiColor('xterm')
     }
-    
+
     stages {
         stage('Checkout') {
             steps {
                 cleanWs()
                 checkout scm
+                script {
+                    // Set BRANCH_NAME explicitly
+                    env.BRANCH_NAME = "${env.GIT_BRANCH?.replaceFirst(/^origin\//, '') ?: 'main'}"
+                }
             }
         }
-        
+
         stage('Install Dependencies') {
             steps {
                 script {
@@ -72,7 +76,7 @@ pipeline {
                 }
             }
         }
-        
+
         stage('Security Checks') {
             parallel {
                 stage('SonarQube Analysis') {
@@ -93,30 +97,23 @@ pipeline {
                         }
                     }
                 }
-                
+
                 stage('OWASP Dependency Check') {
                     steps {
                         script {
                             try {
-                                // Verify tool availability
                                 sh 'dependency-check.sh --version'
-                                
-                                // Run the check
                                 sh """
                                     dependency-check.sh \
                                         --scan . \
                                         --format HTML \
                                         --format JSON \
                                         --prettyPrint \
-                                        --out ${DEPENDENCY_CHECK_REPORTS}/\${BUILD_NUMBER}
+                                        --out ${DEPENDENCY_CHECK_REPORTS}/${BUILD_NUMBER}
                                 """
                             } catch (Exception e) {
-                                if (e.message.contains("dependency-check.sh: command not found")) {
-                                    error "Dependency Check is not installed or not in PATH"
-                                } else {
-                                    currentBuild.result = 'UNSTABLE'
-                                    echo "Dependency check found vulnerabilities: ${e.message}"
-                                }
+                                currentBuild.result = 'UNSTABLE'
+                                echo "Dependency check found vulnerabilities: ${e.message}"
                             }
                         }
                     }
@@ -138,30 +135,22 @@ pipeline {
                     steps {
                         script {
                             try {
-                                // Verify tool availability
                                 sh 'trivy --version'
-                                
-                                // Run the scan
                                 sh """
                                     trivy image ${GHCR_IMAGE}:${BUILD_TAG} \
                                         --cache-dir ${TRIVY_CACHE_DIR} \
                                         --format template \
                                         --template '@/usr/local/share/trivy/templates/html.tpl' \
-                                        --output ${TRIVY_REPORTS_DIR}/trivy-report-\${BUILD_NUMBER}.html
+                                        --output ${TRIVY_REPORTS_DIR}/trivy-report-${BUILD_NUMBER}.html
 
-                                    # Separate scan for failure threshold
                                     trivy image ${GHCR_IMAGE}:${BUILD_TAG} \
                                         --cache-dir ${TRIVY_CACHE_DIR} \
                                         --exit-code 1 \
                                         --severity HIGH,CRITICAL
                                 """
                             } catch (Exception e) {
-                                if (e.message.contains("trivy: command not found")) {
-                                    error "Trivy is not installed or not in PATH"
-                                } else {
-                                    currentBuild.result = 'UNSTABLE'
-                                    echo "Trivy found vulnerabilities: ${e.message}"
-                                }
+                                currentBuild.result = 'UNSTABLE'
+                                echo "Trivy found vulnerabilities: ${e.message}"
                             }
                         }
                     }
@@ -180,7 +169,7 @@ pipeline {
                 }
             }
         }
-        
+
         stage('Build and Push to GHCR') {
             steps {
                 script {
@@ -188,10 +177,8 @@ pipeline {
                         withCredentials([string(credentialsId: 'github-token', variable: 'GITHUB_TOKEN')]) {
                             sh """
                                 echo \$GITHUB_TOKEN | docker login ${GHCR_REGISTRY} -u ${GITHUB_USERNAME} --password-stdin || exit 1
-                                
                                 docker build -t ${GHCR_IMAGE}:${BUILD_TAG} . || exit 1
                                 docker push ${GHCR_IMAGE}:${BUILD_TAG} || exit 1
-                                
                                 if [ "${BRANCH_NAME}" = "main" ]; then
                                     docker tag ${GHCR_IMAGE}:${BUILD_TAG} ${GHCR_IMAGE}:latest
                                     docker push ${GHCR_IMAGE}:latest
@@ -210,12 +197,10 @@ pipeline {
             steps {
                 script {
                     try {
-                        withCredentials([
-                            [$class: 'AmazonWebServicesCredentialsBinding', 
-                             credentialsId: 'aws-credentials',
-                             accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                             secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
-                        ]) {
+                        withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', 
+                                          credentialsId: 'aws-credentials',
+                                          accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                                          secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
                             sh """
                                 aws ecr get-login-password --region ${AWS_REGION} | \
                                 docker login --username AWS --password-stdin ${ECR_REPOSITORY_URI} || exit 1
@@ -237,7 +222,7 @@ pipeline {
             }
         }
     }
-    
+
     post {
         always {
             script {
