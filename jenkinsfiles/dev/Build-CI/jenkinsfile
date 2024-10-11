@@ -24,6 +24,12 @@ pipeline {
         
         // Node environment
         NODE_ENV = 'production'
+        
+        // Dependency Check and Trivy Cache and Reports directories
+        DEPENDENCY_CHECK_HOME = '/opt/dependency-check'
+        DEPENDENCY_CHECK_REPORTS = '/var/jenkins_home/dependency-check-reports'
+        TRIVY_CACHE_DIR = '/var/jenkins_home/trivy-cache'
+        TRIVY_REPORTS_DIR = '/var/jenkins_home/trivy-reports'
     }
     
     options {
@@ -48,6 +54,20 @@ pipeline {
                     } catch (Exception e) {
                         currentBuild.result = 'FAILURE'
                         error "Failed to install dependencies: ${e.message}"
+                    }
+                }
+            }
+        }
+
+        stage('NPM Security Audit') {
+            steps {
+                script {
+                    try {
+                        sh 'npm audit fix'
+                        sh 'npm audit'
+                    } catch (Exception e) {
+                        echo "Security vulnerabilities found: ${e.message}"
+                        currentBuild.result = 'UNSTABLE'
                     }
                 }
             }
@@ -78,18 +98,25 @@ pipeline {
                     steps {
                         script {
                             try {
-                                docker.image('owasp/dependency-check').inside {
-                                    sh '''
-                                        dependency-check.sh --scan . \
-                                            --format JSON --format HTML \
-                                            --prettyPrint \
-                                            --suppressionFile suppress.xml \
-                                            --out dependency-check-report
-                                    '''
-                                }
+                                // Verify tool availability
+                                sh 'dependency-check.sh --version'
+                                
+                                // Run the check
+                                sh """
+                                    dependency-check.sh \
+                                        --scan . \
+                                        --format HTML \
+                                        --format JSON \
+                                        --prettyPrint \
+                                        --out ${DEPENDENCY_CHECK_REPORTS}/\${BUILD_NUMBER}
+                                """
                             } catch (Exception e) {
-                                currentBuild.result = 'UNSTABLE'
-                                echo "Dependency check failed: ${e.message}"
+                                if (e.message.contains("dependency-check.sh: command not found")) {
+                                    error "Dependency Check is not installed or not in PATH"
+                                } else {
+                                    currentBuild.result = 'UNSTABLE'
+                                    echo "Dependency check found vulnerabilities: ${e.message}"
+                                }
                             }
                         }
                     }
@@ -99,9 +126,54 @@ pipeline {
                                 allowMissing: true,
                                 alwaysLinkToLastBuild: true,
                                 keepAll: true,
-                                reportDir: '.',
+                                reportDir: "${DEPENDENCY_CHECK_REPORTS}/${BUILD_NUMBER}",
                                 reportFiles: 'dependency-check-report.html',
                                 reportName: 'Dependency Check Report'
+                            ])
+                        }
+                    }
+                }
+
+                stage('Trivy Scan') {
+                    steps {
+                        script {
+                            try {
+                                // Verify tool availability
+                                sh 'trivy --version'
+                                
+                                // Run the scan
+                                sh """
+                                    trivy image ${GHCR_IMAGE}:${BUILD_TAG} \
+                                        --cache-dir ${TRIVY_CACHE_DIR} \
+                                        --format template \
+                                        --template '@/usr/local/share/trivy/templates/html.tpl' \
+                                        --output ${TRIVY_REPORTS_DIR}/trivy-report-\${BUILD_NUMBER}.html
+
+                                    # Separate scan for failure threshold
+                                    trivy image ${GHCR_IMAGE}:${BUILD_TAG} \
+                                        --cache-dir ${TRIVY_CACHE_DIR} \
+                                        --exit-code 1 \
+                                        --severity HIGH,CRITICAL
+                                """
+                            } catch (Exception e) {
+                                if (e.message.contains("trivy: command not found")) {
+                                    error "Trivy is not installed or not in PATH"
+                                } else {
+                                    currentBuild.result = 'UNSTABLE'
+                                    echo "Trivy found vulnerabilities: ${e.message}"
+                                }
+                            }
+                        }
+                    }
+                    post {
+                        always {
+                            publishHTML(target: [
+                                allowMissing: true,
+                                alwaysLinkToLastBuild: true,
+                                keepAll: true,
+                                reportDir: "${TRIVY_REPORTS_DIR}",
+                                reportFiles: "trivy-report-${BUILD_NUMBER}.html",
+                                reportName: 'Trivy Scan Report'
                             ])
                         }
                     }
@@ -130,41 +202,6 @@ pipeline {
                         currentBuild.result = 'FAILURE'
                         error "Failed to build or push to GHCR: ${e.message}"
                     }
-                }
-            }
-        }
-
-        stage('Trivy Scan') {
-            steps {
-                script {
-                    try {
-                        sh """
-                            trivy image ${GHCR_IMAGE}:${BUILD_TAG} \
-                                --format template \
-                                --template '@/usr/local/share/trivy/templates/html.tpl' \
-                                --output trivy-report.html || true
-
-                            # Run a separate scan for failure threshold
-                            trivy image ${GHCR_IMAGE}:${BUILD_TAG} \
-                                --exit-code 1 \
-                                --severity HIGH,CRITICAL
-                        """
-                    } catch (Exception e) {
-                        currentBuild.result = 'UNSTABLE'
-                        echo "Trivy found vulnerabilities: ${e.message}"
-                    }
-                }
-            }
-            post {
-                always {
-                    publishHTML(target: [
-                        allowMissing: true,
-                        alwaysLinkToLastBuild: true,
-                        keepAll: true,
-                        reportDir: '.',
-                        reportFiles: 'trivy-report.html',
-                        reportName: 'Trivy Scan Report'
-                    ])
                 }
             }
         }
