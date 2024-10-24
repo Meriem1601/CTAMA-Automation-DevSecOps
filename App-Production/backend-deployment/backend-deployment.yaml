@@ -13,12 +13,12 @@ spec:
       labels:
         app: backend-app
     spec:
-      serviceAccountName: app-service-account
+      serviceAccountName: backendapp-service-account
       imagePullSecrets:
-      - name: ecr-secret  # Secret for pulling image from ECR
+      - name: ghcr-secret  
       containers:
       - name: backend-app
-        image: 211125488393.dkr.ecr.eu-north-1.amazonaws.com/ctama-devsecops-images:v1.2.0-build
+        image: ghcr.io/meriem1601/ctama-automation-devsecops:latest  
         ports:
         - containerPort: 3000
         env:

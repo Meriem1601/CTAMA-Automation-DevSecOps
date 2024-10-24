@@ -10,4 +10,4 @@ spec:
   - protocol: TCP
     port: 3306
     targetPort: 3306
-  clusterIP: None  # This makes the service headless, which is useful for StatefulSets
+  clusterIP: None  
