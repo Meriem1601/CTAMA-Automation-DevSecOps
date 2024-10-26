@@ -3,15 +3,19 @@ kind: Deployment
 metadata:
   name: backend-app
   namespace: devsecops-prod
+  labels:
+    app: app-backend-app
+    team: team-devsecops  
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app: backend-app
+      app: app-backend-app
   template:
     metadata:
       labels:
-        app: backend-app
+        app: app-backend-app
+        team: team-devsecops  
     spec:
       serviceAccountName: backendapp-service-account
       imagePullSecrets:
@@ -23,7 +27,7 @@ spec:
         - containerPort: 3000
         env:
         - name: MYSQL_HOST
-          value: "mysql"  # MySQL service inside the cluster
+          value: "mysql"  
         - name: MYSQL_PORT
           value: "3306"
         - name: MYSQL_USER
@@ -35,8 +39,16 @@ spec:
               key: mysql-root-password
         volumeMounts:
         - name: app-storage
-          mountPath: /usr/src/app  # Update this path based on your app's storage needs
+          mountPath: /usr/src/app  
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "500m"
+          limits:
+            memory: "512Mi"
+            cpu: "1"
       volumes:
       - name: app-storage
         persistentVolumeClaim:
           claimName: backend-app-pvc
+
