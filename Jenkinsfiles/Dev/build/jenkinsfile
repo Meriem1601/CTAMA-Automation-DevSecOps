@@ -3,7 +3,7 @@ pipeline {
         label 'EC2-Agent'
     }
     options {
-        timeout(time: 30, unit: 'MINUTES')
+        timeout(time: 60, unit: 'MINUTES')
         disableConcurrentBuilds()
         ansiColor('xterm')
     }
@@ -38,8 +38,8 @@ pipeline {
         stage('OWASP Dependency-Check Vulnerabilities') {
             steps {
                 dependencyCheck(
-                    additionalArguments: '''-o './'-s './'-f 'ALL' --prettyPrint --resultsPerPage 5000''',
-                    apiKey: '0556907d-a560-45b5-ba8d-b5a1d7a9e43a',
+                    additionalArguments: '''-o './'-s './'-f 'ALL' --prettyPrint''',
+   
                     odcInstallation: 'OWASP Dependency-Check Vulnerabilities'
                 )
                 dependencyCheckPublisher(
