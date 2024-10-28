@@ -1,0 +1,78 @@
+pipeline {
+    agent {
+        label 'EC2-Agent'
+    }
+
+    environment {
+        APP_VERSION = 'v1.2.0'
+        BUILD_TAG = "${APP_VERSION}-${BUILD_NUMBER}"
+        NODE_ENV = 'development'
+    }
+
+    options {
+        timeout(time: 30, unit: 'MINUTES')
+        disableConcurrentBuilds()
+        ansiColor('xterm')
+    }
+
+    stages {
+        stage('Welcome Message') {
+            steps {
+                script {
+                    echo "Welcome to the CI Pipeline! Preparing artifact for version ${BUILD_TAG}..."
+                }
+            }
+        }
+
+        stage('Install Dependencies') {
+            steps {
+                script {
+                    try {
+                        sh 'npm ci'
+                    } catch (Exception e) {
+                        currentBuild.result = 'FAILURE'
+                        error "Failed to install dependencies: ${e.message}"
+                    }
+                }
+            }
+        }
+
+        stage('Create Artifact') {
+            steps {
+                script {
+                    // Create a deployment package without running a build
+                    sh '''
+                        # Create deployment package
+                        tar -czf dist-${BUILD_TAG}.tar.gz \
+                            package.json \
+                            package-lock.json \
+                            app.js \
+                            server.js \
+                            # Add any other necessary files
+                    '''
+                    
+                    // Archive the build artifact
+                    archiveArtifacts artifacts: "dist-${BUILD_TAG}.tar.gz", fingerprint: true
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            script {
+                try {
+                    cleanWs()
+                } catch (Exception e) {
+                    echo "Cleanup failed: ${e.message}"
+                }
+            }
+        }
+        success {
+            echo "Pipeline completed successfully for version ${BUILD_TAG}!"
+        }
+        failure {
+            echo "Pipeline failed for version ${BUILD_TAG}! Please check the logs for details."
+        }
+    }
+}
