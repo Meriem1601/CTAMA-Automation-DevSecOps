@@ -2,30 +2,25 @@ pipeline {
     agent {
         label 'EC2-Agent'
     }
-
     options {
         timeout(time: 30, unit: 'MINUTES')
         disableConcurrentBuilds()
         ansiColor('xterm')
     }
-
     environment {
         NODE_ENV = 'development'
     }
-
     stages {
         stage('Welcome') {
             steps {
-                echo 'Welcome to the CI pipeline for the backend JavaScript application!'
+                echo 'Welcome to the Continuous Integration pipeline for the backend JavaScript application. This pipeline will perform code analysis, security scanning, and other quality checks to ensure the application is secure and maintainable.'
             }
         }
-
         stage('Install Dependencies') {
             steps {
                 sh 'npm install --silent'
             }
         }
-
         stage('SonarQube - SAST') {
             steps {
                 script {
@@ -40,27 +35,25 @@ pipeline {
                 }
             }
         }
-
-        stage('OwaspZap - SCAN') {
+        stage('OWASP Dependency-Check Vulnerabilities') {
             steps {
-                dependencyCheck additionalArguments: ''' 
-                    -o './'
-                    -s './'
-                    -f 'ALL' 
-                    --prettyPrint''', 
+                dependencyCheck(
+                    additionalArguments: '''-o './'-s './'-f 'ALL' --prettyPrint --resultsPerPage 5000''',
+                    nvdApiKey: '0556907d-a560-45b5-ba8d-b5a1d7a9e43a',
                     odcInstallation: 'OWASP Dependency-Check Vulnerabilities'
-                
-                dependencyCheckPublisher pattern: 'dependency-check-report.xml'
+                )
+                dependencyCheckPublisher(
+                    pattern: 'dependency-check-report.xml'
+                )
             }
         }
     }
-
     post {
         success {
-            echo 'Pipeline completed successfully!'
+            echo 'The CI pipeline has completed successfully. The application is ready for further deployment and testing.'
         }
         failure {
-            echo 'Pipeline failed. Please check the logs.'
+            echo 'The CI pipeline has encountered an issue. Please check the logs for more information.'
         }
     }
 }
