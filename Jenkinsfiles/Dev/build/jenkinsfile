@@ -39,7 +39,7 @@ pipeline {
             steps {
                 dependencyCheck(
                     additionalArguments: '''-o './'-s './'-f 'ALL' --prettyPrint --resultsPerPage 5000''',
-                    nvdApiKey: '0556907d-a560-45b5-ba8d-b5a1d7a9e43a',
+                    apiKey: '0556907d-a560-45b5-ba8d-b5a1d7a9e43a',
                     odcInstallation: 'OWASP Dependency-Check Vulnerabilities'
                 )
                 dependencyCheckPublisher(
