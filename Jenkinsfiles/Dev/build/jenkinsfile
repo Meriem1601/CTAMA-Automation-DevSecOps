@@ -16,9 +16,7 @@ pipeline {
     stages {
         stage('Welcome') {
             steps {
-                script {
-                    echo 'Welcome to the CI pipeline for the backend JavaScript application!'
-                }
+                echo 'Welcome to the CI pipeline for the backend JavaScript application!'
             }
         }
 
@@ -32,9 +30,7 @@ pipeline {
             steps {
                 script {
                     try {
-                       
                         withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
-                            
                             sh './run-sonar.sh'
                         }
                         echo "SonarQube analysis completed successfully."
@@ -42,6 +38,19 @@ pipeline {
                         error "SonarQube analysis failed: ${e.message}"
                     }
                 }
+            }
+        }
+
+        stage('OwaspZap - SCAN') {
+            steps {
+                dependencyCheck additionalArguments: ''' 
+                    -o './'
+                    -s './'
+                    -f 'ALL' 
+                    --prettyPrint''', 
+                    odcInstallation: 'OWASP Dependency-Check Vulnerabilities'
+                
+                dependencyCheckPublisher pattern: 'dependency-check-report.xml'
             }
         }
     }
