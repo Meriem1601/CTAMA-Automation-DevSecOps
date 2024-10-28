@@ -24,14 +24,27 @@ pipeline {
             }
         }
 
-        stage('Install Dependencies') {
-            steps {
-                script {
-                    try {
-                        sh 'npm ci'
-                    } catch (Exception e) {
-                        currentBuild.result = 'FAILURE'
-                        error "Failed to install dependencies: ${e.message}"
+        stage('Prepare Environment') {
+            parallel {
+                stage('Install Dependencies') {
+                    steps {
+                        script {
+                            try {
+                                sh 'npm ci'
+                            } catch (Exception e) {
+                                currentBuild.result = 'FAILURE'
+                                error "Failed to install dependencies: ${e.message}"
+                            }
+                        }
+                    }
+                }
+
+                stage('List Files') {
+                    steps {
+                        script {
+                            // List files in the workspace for debugging
+                            sh 'ls -la'
+                        }
                     }
                 }
             }
@@ -40,15 +53,20 @@ pipeline {
         stage('Create Artifact') {
             steps {
                 script {
-                    // Create a deployment package without running a build
+                    // Create a deployment package
                     sh '''
-                        # Create deployment package
+                        # Create deployment package with correct paths
                         tar -czf dist-${BUILD_TAG}.tar.gz \
-                            package.json \
-                            package-lock.json \
                             app.js \
                             server.js \
-                            # Add any other necessary files
+                            package.json \
+                            package-lock.json \
+                            src/ \
+                            config/ \
+                            controllers/ \
+                            middleware/ \
+                            models/ \
+                            routes/
                     '''
                     
                     // Archive the build artifact
