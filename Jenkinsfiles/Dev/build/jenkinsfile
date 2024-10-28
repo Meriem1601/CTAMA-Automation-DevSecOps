@@ -1,16 +1,16 @@
 pipeline {
     agent {
-        label 'EC2-Agent' 
+        label 'EC2-Agent'
     }
 
     options {
-        timeout(time: 30, unit: 'MINUTES') // Set a timeout for the pipeline
-        disableConcurrentBuilds() // Prevent concurrent builds
-        ansiColor('xterm') // Enable ANSI color output in the console
+        timeout(time: 30, unit: 'MINUTES')
+        disableConcurrentBuilds()
+        ansiColor('xterm')
     }
 
     environment {
-        NODE_ENV = 'development' 
+        NODE_ENV = 'development'
     }
 
     stages {
@@ -24,8 +24,24 @@ pipeline {
 
         stage('Install Dependencies') {
             steps {
-                // Install dependencies with reduced output
                 sh 'npm install --silent'
+            }
+        }
+
+        stage('SonarQube - SAST') {
+            steps {
+                script {
+                    try {
+                       
+                        withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
+                            
+                            sh './run-sonar.sh'
+                        }
+                        echo "SonarQube analysis completed successfully."
+                    } catch (Exception e) {
+                        error "SonarQube analysis failed: ${e.message}"
+                    }
+                }
             }
         }
     }
