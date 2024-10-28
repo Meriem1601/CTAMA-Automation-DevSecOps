@@ -39,7 +39,6 @@ pipeline {
             steps {
                 dependencyCheck(
                     additionalArguments: '''-o './'-s './'-f 'ALL' --prettyPrint''',
-   
                     odcInstallation: 'OWASP Dependency-Check Vulnerabilities'
                 )
                 dependencyCheckPublisher(
