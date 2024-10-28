@@ -40,16 +40,14 @@ pipeline {
             }
         }
 
-        stage('Build Artifact') {
+        stage('Package Artifact') {  // Renamed stage for clarity
             steps {
                 script {
-                    // Create a production build
+                    // Create deployment package
                     sh '''
-                        npm run build
-                        
-                        # Create deployment package
-                        tar -czf dist-${BUILD_TAG}.tar.gz \
-                            dist/ \
+                        # Create a tarball of the necessary files
+                        tar -czf backend-app-${BUILD_TAG}.tar.gz \
+                            src/ \
                             package.json \
                             package-lock.json \
                             app.js \
@@ -57,7 +55,7 @@ pipeline {
                     '''
                     
                     // Archive the build artifact
-                    archiveArtifacts artifacts: "dist-${BUILD_TAG}.tar.gz", fingerprint: true
+                    archiveArtifacts artifacts: "backend-app-${BUILD_TAG}.tar.gz", fingerprint: true
                 }
             }
         }
