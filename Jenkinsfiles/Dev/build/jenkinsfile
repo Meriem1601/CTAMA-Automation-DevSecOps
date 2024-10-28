@@ -37,12 +37,25 @@ pipeline {
         }
         stage('OWASP Dependency-Check Vulnerabilities') {
             steps {
+                // Create output directory
+                sh 'mkdir -p dependency-check-reports'
+                
+                // Run Dependency Check
                 dependencyCheck(
-                    additionalArguments: '''-o './'-s './'-f 'ALL' --prettyPrint''',
+                    additionalArguments: '''
+                        -s ./ 
+                        -f XML 
+                        -f HTML 
+                        -o dependency-check-reports 
+                        --prettyPrint
+                        --failOnCVSS 60
+                    ''',
                     odcInstallation: 'OWASP Dependency-Check Vulnerabilities'
                 )
+                
+                // Publish the report without any failure conditions
                 dependencyCheckPublisher(
-                    pattern: 'dependency-check-report.xml'
+                    pattern: 'dependency-check-reports/dependency-check-report.xml'
                 )
             }
         }
@@ -53,6 +66,10 @@ pipeline {
         }
         failure {
             echo 'The CI pipeline has encountered an issue. Please check the logs for more information.'
+        }
+        always {
+            // Archive the dependency check reports
+            archiveArtifacts artifacts: 'dependency-check-reports/*', allowEmptyArchive: true
         }
     }
 }
