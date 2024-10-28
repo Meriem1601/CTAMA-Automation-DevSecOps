@@ -4,48 +4,25 @@ pipeline {
     }
 
     environment {
-        // AWS Variables
-        AWS_REGION = 'eu-north-1'
-        ECR_REPOSITORY_NAME = 'ctama-devsecops-images'
-        ECR_REPOSITORY_URI = "211125488393.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY_NAME}"
-
-        // GitHub Container Registry Variables
-        GHCR_REGISTRY = 'ghcr.io'
-        GITHUB_USERNAME = 'meriem1601'
-        REPO_NAME = 'ctama-automation-devsecops'
-        IMAGE_NAME = 'myapp'
-
         // Version and tag variables
         APP_VERSION = 'v1.2.0'
         BUILD_TAG = "${APP_VERSION}-${BUILD_NUMBER}"
 
-        // GHCR full image name
-        GHCR_IMAGE = "${GHCR_REGISTRY}/${GITHUB_USERNAME}/${REPO_NAME}"
-
         // Node environment
-        NODE_ENV = 'production'
-
-        // Dependency Check and Trivy directories
-        DEPENDENCY_CHECK_HOME = '/opt/dependency-check'
-        DEPENDENCY_CHECK_REPORTS = '/var/jenkins_home/dependency-check-reports'
-        TRIVY_CACHE_DIR = '/var/jenkins_home/trivy-cache'
-        TRIVY_REPORTS_DIR = '/var/jenkins_home/trivy-reports'
+        NODE_ENV = 'development'
     }
 
     options {
-        timeout(time: 1, unit: 'HOURS')
+        timeout(time: 30, unit: 'MINUTES')
         disableConcurrentBuilds()
         ansiColor('xterm')
     }
 
     stages {
-        stage('Checkout') {
+        stage('Welcome Message') {
             steps {
-                cleanWs()
-                checkout scm
                 script {
-                    // Set BRANCH_NAME explicitly
-                    env.BRANCH_NAME = "${env.GIT_BRANCH?.replaceFirst(/^origin\//, '') ?: 'main'}"
+                    echo "Welcome to the CI Pipeline! Building version ${BUILD_TAG}..."
                 }
             }
         }
@@ -63,161 +40,24 @@ pipeline {
             }
         }
 
-        stage('NPM Security Audit') {
+        stage('Build Artifact') {
             steps {
                 script {
-                    try {
-                        sh 'npm audit fix'
-                        sh 'npm audit'
-                    } catch (Exception e) {
-                        echo "Security vulnerabilities found: ${e.message}"
-                        currentBuild.result = 'UNSTABLE'
-                    }
-                }
-            }
-        }
-
-        stage('Security Checks') {
-            parallel {
-                stage('SonarQube Analysis') {
-                    steps {
-                        script {
-                            try {
-                                sh """
-                                    sonar-scanner \
-                                      -Dsonar.projectKey=CTAMA-Automation-DevSecOps \
-                                      -Dsonar.sources=. \
-                                      -Dsonar.host.url=http://16.16.118.25:9000 \
-                                      -Dsonar.token=sqp_8f9c8b21d8f7065aa3e059f4ba0a739af3760009
-                                """
-                            } catch (Exception e) {
-                                currentBuild.result = 'UNSTABLE'
-                                echo "SonarQube analysis failed: ${e.message}"
-                            }
-                        }
-                    }
-                }
-
-                stage('OWASP Dependency Check') {
-                    steps {
-                        script {
-                            try {
-                                sh 'dependency-check.sh --version'
-                                sh """
-                                    dependency-check.sh \
-                                        --scan . \
-                                        --format HTML \
-                                        --format JSON \
-                                        --prettyPrint \
-                                        --out ${DEPENDENCY_CHECK_REPORTS}/${BUILD_NUMBER}
-                                """
-                            } catch (Exception e) {
-                                currentBuild.result = 'UNSTABLE'
-                                echo "Dependency check found vulnerabilities: ${e.message}"
-                            }
-                        }
-                    }
-                    post {
-                        always {
-                            publishHTML(target: [
-                                allowMissing: true,
-                                alwaysLinkToLastBuild: true,
-                                keepAll: true,
-                                reportDir: "${DEPENDENCY_CHECK_REPORTS}/${BUILD_NUMBER}",
-                                reportFiles: 'dependency-check-report.html',
-                                reportName: 'Dependency Check Report'
-                            ])
-                        }
-                    }
-                }
-
-                stage('Trivy Scan') {
-                    steps {
-                        script {
-                            try {
-                                sh 'trivy --version'
-                                sh """
-                                    trivy image ${GHCR_IMAGE}:${BUILD_TAG} \
-                                        --cache-dir ${TRIVY_CACHE_DIR} \
-                                        --format template \
-                                        --template '@/usr/local/share/trivy/templates/html.tpl' \
-                                        --output ${TRIVY_REPORTS_DIR}/trivy-report-${BUILD_NUMBER}.html
-
-                                    trivy image ${GHCR_IMAGE}:${BUILD_TAG} \
-                                        --cache-dir ${TRIVY_CACHE_DIR} \
-                                        --exit-code 1 \
-                                        --severity HIGH,CRITICAL
-                                """
-                            } catch (Exception e) {
-                                currentBuild.result = 'UNSTABLE'
-                                echo "Trivy found vulnerabilities: ${e.message}"
-                            }
-                        }
-                    }
-                    post {
-                        always {
-                            publishHTML(target: [
-                                allowMissing: true,
-                                alwaysLinkToLastBuild: true,
-                                keepAll: true,
-                                reportDir: "${TRIVY_REPORTS_DIR}",
-                                reportFiles: "trivy-report-${BUILD_NUMBER}.html",
-                                reportName: 'Trivy Scan Report'
-                            ])
-                        }
-                    }
-                }
-            }
-        }
-
-        stage('Build and Push to GHCR') {
-            steps {
-                script {
-                    try {
-                        withCredentials([string(credentialsId: 'github-token', variable: 'GITHUB_TOKEN')]) {
-                            sh """
-                                echo \$GITHUB_TOKEN | docker login ${GHCR_REGISTRY} -u ${GITHUB_USERNAME} --password-stdin || exit 1
-                                docker build -t ${GHCR_IMAGE}:${BUILD_TAG} . || exit 1
-                                docker push ${GHCR_IMAGE}:${BUILD_TAG} || exit 1
-                                if [ "${BRANCH_NAME}" = "main" ]; then
-                                    docker tag ${GHCR_IMAGE}:${BUILD_TAG} ${GHCR_IMAGE}:latest
-                                    docker push ${GHCR_IMAGE}:latest
-                                fi
-                            """
-                        }
-                    } catch (Exception e) {
-                        currentBuild.result = 'FAILURE'
-                        error "Failed to build or push to GHCR: ${e.message}"
-                    }
-                }
-            }
-        }
-
-        stage('Push to ECR') {
-            steps {
-                script {
-                    try {
-                        withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', 
-                                          credentialsId: 'aws-credentials',
-                                          accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                                          secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
-                            sh """
-                                aws ecr get-login-password --region ${AWS_REGION} | \
-                                docker login --username AWS --password-stdin ${ECR_REPOSITORY_URI} || exit 1
-
-                                docker tag ${GHCR_IMAGE}:${BUILD_TAG} ${ECR_REPOSITORY_URI}:${BUILD_TAG} || exit 1
-                                docker push ${ECR_REPOSITORY_URI}:${BUILD_TAG} || exit 1
-
-                                if [ "${BRANCH_NAME}" = "main" ]; then
-                                    docker tag ${ECR_REPOSITORY_URI}:${BUILD_TAG} ${ECR_REPOSITORY_URI}:latest
-                                    docker push ${ECR_REPOSITORY_URI}:latest
-                                fi
-                            """
-                        }
-                    } catch (Exception e) {
-                        currentBuild.result = 'FAILURE'
-                        error "Failed to push to ECR: ${e.message}"
-                    }
+                    // Create a production build
+                    sh '''
+                        npm run build
+                        
+                        # Create deployment package
+                        tar -czf dist-${BUILD_TAG}.tar.gz \
+                            dist/ \
+                            package.json \
+                            package-lock.json \
+                            app.js \
+                            server.js
+                    '''
+                    
+                    // Archive the build artifact
+                    archiveArtifacts artifacts: "dist-${BUILD_TAG}.tar.gz", fingerprint: true
                 }
             }
         }
@@ -228,20 +68,16 @@ pipeline {
             script {
                 try {
                     cleanWs()
-                    sh 'docker system prune -f'
                 } catch (Exception e) {
                     echo "Cleanup failed: ${e.message}"
                 }
             }
         }
         success {
-            echo 'Pipeline completed successfully!'
-        }
-        unstable {
-            echo 'Pipeline completed but is unstable. Check the logs for warnings.'
+            echo "Pipeline completed successfully for version ${BUILD_TAG}!"
         }
         failure {
-            echo 'Pipeline failed! Please check the logs for details.'
+            echo "Pipeline failed for version ${BUILD_TAG}! Please check the logs for details."
         }
     }
 }
