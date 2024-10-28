@@ -2,95 +2,64 @@ pipeline {
     agent {
         label 'EC2-Agent'
     }
+
     environment {
-        AWS_REGION = 'eu-north-1'
-        ECR_REPOSITORY_NAME = 'ctama-devsecops-images'
-        IMAGE_TAG = 'v1.2.0-build'
-        ECR_REPOSITORY_URI = "211125488393.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY_NAME}"
+        NODE_ENV = 'development'
+        APP_VERSION = '1.0.0'
+        BUILD_TAG = "${APP_VERSION}-${BUILD_NUMBER}"
     }
+
+    options {
+        timeout(time: 30, unit: 'MINUTES')
+        disableConcurrentBuilds()
+        ansiColor('xterm')
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+    }
+
     stages {
-        stage('Declarative: Checkout SCM') {
+        stage('Install Dependencies') {
             steps {
-                checkout([$class: 'GitSCM',
-                    branches: [[name: '*/main']],
-                    userRemoteConfigs: [[
-                        url: 'https://github.com/Meriem1601/CTAMA-Automation-DevSecOps.git',
-                        credentialsId: 'github-ssh-key-main'
-                    ]]
-                ])
+                // Install dependencies
+                sh '''
+                    npm ci --prefer-offline
+                    npm cache verify
+                '''
             }
         }
-        stage('Hello Git') {
+
+        stage('Build Artifact') {
             steps {
                 script {
-                    try {
-                        sh 'git version'
-                    } catch (Exception e) {
-                        error "Git version check failed: ${e.message}"
-                    }
-                }
-            }
-        }
-        stage('Hello Docker Build') {
-            steps {
-                script {
-                    try {
-                        sh 'docker version'
-                        sh 'docker build -t my-node-app:${IMAGE_TAG} .'
-                    } catch (Exception e) {
-                        error "Docker build failed: ${e.message}"
-                    }
-                }
-            }
-        }
-        stage('Authenticate Docker to ECR') {
-            steps {
-                withCredentials([aws(credentialsId: 'aws-credentials')]) {
-                    script {
-                        try {
-                            sh 'aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPOSITORY_URI}'
-                        } catch (Exception e) {
-                            error "Docker login to ECR failed: ${e.message}"
-                        }
-                    }
-                }
-            }
-        }
-        stage('Tag and Push Image to ECR') {
-            steps {
-                withCredentials([aws(credentialsId: 'aws-credentials')]) {
-                    script {
-                        try {
-                            // Tag the Docker image
-                            sh "docker tag my-node-app:${IMAGE_TAG} ${ECR_REPOSITORY_URI}:${IMAGE_TAG}"
-                            
-                            // Check if the image already exists
-                            def describeResult = sh(
-                                script: "aws ecr describe-images --repository-name ${ECR_REPOSITORY_NAME} --image-ids imageTag=${IMAGE_TAG} --region ${AWS_REGION}",
-                                returnStatus: true
-                            )
-                            
-                            if (describeResult != 0) {
-                                // Push the Docker image to ECR
-                                sh "docker push ${ECR_REPOSITORY_URI}:${IMAGE_TAG}"
-                                echo "Docker image ${ECR_REPOSITORY_URI}:${IMAGE_TAG} pushed successfully."
-                            } else {
-                                echo "Image ${ECR_REPOSITORY_URI}:${IMAGE_TAG} already exists. Skipping push."
-                            }
-                        } catch (Exception e) {
-                            error "Tagging or pushing image failed: ${e.message}"
-                        }
-                    }
+                    // Create a production build
+                    sh '''
+                        npm run build
+                        
+                        # Create deployment package
+                        tar -czf dist-${BUILD_TAG}.tar.gz \
+                            dist/ \
+                            package.json \
+                            package-lock.json \
+                            app.js \
+                            server.js
+                    '''
+                    
+                    // Archive the build artifact
+                    archiveArtifacts artifacts: "dist-${BUILD_TAG}.tar.gz", fingerprint: true
                 }
             }
         }
     }
+
     post {
-        failure {
-            echo 'CI Pipeline failed. Please check the logs for details.'
+        always {
+            // Cleanup workspace
+            cleanWs()
         }
         success {
-            echo 'CI Pipeline succeeded.'
+            echo "Build ${BUILD_TAG} completed successfully"
+        }
+        failure {
+            echo "Build ${BUILD_TAG} failed"
         }
     }
 }
