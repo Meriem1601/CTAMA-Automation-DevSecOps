@@ -1,96 +1,41 @@
 pipeline {
     agent {
-        label 'EC2-Agent'
-    }
-
-    environment {
-        APP_VERSION = 'v1.2.0'
-        BUILD_TAG = "${APP_VERSION}-${BUILD_NUMBER}"
-        NODE_ENV = 'development'
+        label 'EC2-Agent' 
     }
 
     options {
-        timeout(time: 30, unit: 'MINUTES')
-        disableConcurrentBuilds()
-        ansiColor('xterm')
+        timeout(time: 30, unit: 'MINUTES') // Set a timeout for the pipeline
+        disableConcurrentBuilds() // Prevent concurrent builds
+        ansiColor('xterm') // Enable ANSI color output in the console
+    }
+
+    environment {
+        NODE_ENV = 'development' 
     }
 
     stages {
-        stage('Welcome Message') {
+        stage('Welcome') {
             steps {
                 script {
-                    echo "Welcome to the CI Pipeline! Preparing artifact for version ${BUILD_TAG}..."
+                    echo 'Welcome to the CI pipeline for the backend JavaScript application!'
                 }
             }
         }
 
-        stage('Prepare Environment') {
-            parallel {
-                stage('Install Dependencies') {
-                    steps {
-                        script {
-                            try {
-                                sh 'npm ci'
-                            } catch (Exception e) {
-                                currentBuild.result = 'FAILURE'
-                                error "Failed to install dependencies: ${e.message}"
-                            }
-                        }
-                    }
-                }
-
-                stage('List Files') {
-                    steps {
-                        script {
-                            // List files in the workspace for debugging
-                            sh 'ls -la'
-                        }
-                    }
-                }
-            }
-        }
-
-        stage('Create Artifact') {
+        stage('Install Dependencies') {
             steps {
-                script {
-                    // Create a deployment package
-                    sh '''
-                        # Create deployment package with correct paths
-                        tar -czf dist-${BUILD_TAG}.tar.gz \
-                            app.js \
-                            server.js \
-                            package.json \
-                            package-lock.json \
-                            src/ \
-                            config/ \
-                            controllers/ \
-                            middleware/ \
-                            models/ \
-                            routes/
-                    '''
-                    
-                    // Archive the build artifact
-                    archiveArtifacts artifacts: "dist-${BUILD_TAG}.tar.gz", fingerprint: true
-                }
+                // Install dependencies with reduced output
+                sh 'npm install --silent'
             }
         }
     }
 
     post {
-        always {
-            script {
-                try {
-                    cleanWs()
-                } catch (Exception e) {
-                    echo "Cleanup failed: ${e.message}"
-                }
-            }
-        }
         success {
-            echo "Pipeline completed successfully for version ${BUILD_TAG}!"
+            echo 'Pipeline completed successfully!'
         }
         failure {
-            echo "Pipeline failed for version ${BUILD_TAG}! Please check the logs for details."
+            echo 'Pipeline failed. Please check the logs.'
         }
     }
 }
