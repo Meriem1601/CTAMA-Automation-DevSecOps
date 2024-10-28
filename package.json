@@ -3,8 +3,8 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "start": "nodemon src/app.js",
-    "build": "react-scripts build"
+    "start": "nodemon src/app.js"
+    
   },
   "dependencies": {
     "bcrypt": "^5.1.1",
