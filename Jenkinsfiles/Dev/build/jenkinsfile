@@ -76,7 +76,7 @@ pipeline {
         
         stage('SonarQube - SAST Analysis') {
             steps {
-<<<<<<< HEAD
+
                 // Create output directory
                 sh 'mkdir -p dependency-check-reports'
                 
@@ -97,7 +97,7 @@ pipeline {
                 dependencyCheckPublisher(
                     pattern: 'dependency-check-reports/dependency-check-report.xml'
                 )
-=======
+
                 script {
                     try {
                         withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
@@ -149,7 +149,7 @@ pipeline {
                         ]
                     )
                 }
->>>>>>> 285dd33 (enhanced jenkinsfile)
+
             }
         }
     }
@@ -166,7 +166,7 @@ pipeline {
         }
         
         failure {
-<<<<<<< HEAD
+
             echo 'The CI pipeline has encountered an issue. Please check the logs for more information.'
         }
         always {
@@ -175,9 +175,9 @@ pipeline {
         }
     }
 }
-=======
+
             echo '''
             ╔═══════════════════════════════════════════════════╗
             ║ ❌ CI Pipeline Encountered Issues               ║
             ╚═══════════════════════════════════════════════════╝
->>>>>>> 285dd33 (enhanced jenkinsfile)
+
