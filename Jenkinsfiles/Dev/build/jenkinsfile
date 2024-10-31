@@ -2,41 +2,81 @@ pipeline {
     agent {
         label 'EC2-Agent'
     }
+    
     options {
         timeout(time: 60, unit: 'MINUTES')
         disableConcurrentBuilds()
         ansiColor('xterm')
     }
+    
     environment {
         NODE_ENV = 'development'
+        ARTIFACT_NAME = "backend-artifact-${BUILD_NUMBER}.tar.gz"
+        ARTIFACT_PATH = "${WORKSPACE}/artifacts"
     }
+    
     stages {
         stage('Welcome') {
             steps {
-                echo 'Welcome to the Continuous Integration pipeline for the backend JavaScript application. This pipeline will perform code analysis, security scanning, and other quality checks to ensure the application is secure and maintainable.'
+                echo '''
+                ╔═══════════════════════════════════════════════════╗
+                ║ 🚀 Backend JavaScript Application CI Pipeline    ║
+                ╚═══════════════════════════════════════════════════╝
+                '''
+                echo 'Initiating Continuous Integration for backend application.'
+                echo 'Performing comprehensive code quality, security, and artifact creation checks.'
             }
         }
-        stage('Install Dependencies') {
-            steps {
-                sh 'npm install --silent'
-            }
-        }
-        stage('SonarQube - SAST') {
-            steps {
-                script {
-                    try {
-                        withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
-                            sh './run-sonar.sh'
+        
+        stage('Parallel Init Tasks') {
+            parallel {
+                stage('Install Dependencies') {
+                    steps {
+                        sh 'npm install --silent'
+                    }
+                }
+                
+                stage('Build Artifact') {
+                    steps {
+                        script {
+                            //First we Create our Artifact Directory 
+                            sh "mkdir -p ${ARTIFACT_PATH}"
+                            
+                            // Here we are Creating artifact with comprehensive exclusions
+                            sh """
+                                tar -czvf ${ARTIFACT_PATH}/${ARTIFACT_NAME} \
+                                --exclude='.git' \
+                                --exclude='node_modules' \
+                                --exclude='artifacts' \
+                                --exclude='Jenkinsfiles' \
+                                --exclude='.gitignore' \
+                                --exclude='push_to_ghcr.sh' \
+                                --exclude='run-sonar.sh' \
+                                --exclude='*.log' \
+                                --exclude='*.md' \
+                                --exclude='dockerfile' \
+                                --exclude='App-Production' \
+                                .
+                            """
+                            
+                            // Here we are Verifying the artifact creation
+                            sh "ls -lh ${ARTIFACT_PATH}"
                         }
-                        echo "SonarQube analysis completed successfully."
-                    } catch (Exception e) {
-                        error "SonarQube analysis failed: ${e.message}"
+                    }
+                    post {
+                        success {
+                            archiveArtifacts artifacts: "artifacts/${ARTIFACT_NAME}", 
+                                             fingerprint: true, 
+                                             onlyIfSuccessful: true
+                        }
                     }
                 }
             }
         }
-        stage('OWASP Dependency-Check Vulnerabilities') {
+        
+        stage('SonarQube - SAST Analysis') {
             steps {
+<<<<<<< HEAD
                 // Create output directory
                 sh 'mkdir -p dependency-check-reports'
                 
@@ -57,14 +97,76 @@ pipeline {
                 dependencyCheckPublisher(
                     pattern: 'dependency-check-reports/dependency-check-report.xml'
                 )
+=======
+                script {
+                    try {
+                        withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
+                          sh './run-sonar.sh'
+                        }
+                        echo "✅ SonarQube analysis completed successfully."
+                    } catch (Exception e) {
+                        echo "❌ SonarQube analysis encountered an issue: ${e.message}"
+                    }
+                }
+            }
+        }
+        
+        stage('OWASP Dependency-Check') {
+            steps {
+                script {
+                    try {
+                        dependencyCheck(
+                            additionalArguments: '''
+                                -o ./dependency-check-report 
+                                -s ./ 
+                                -f 'ALL' 
+                                --prettyPrint 
+                                --log dependency-check.log
+                            ''',
+                            odcInstallation: 'OWASP Dependency-Check Vulnerabilities'
+                        )
+                        
+                        dependencyCheckPublisher(
+                            pattern: 'dependency-check-report/dependency-check-report.xml'
+                        )
+                        
+                        echo "✅ Dependency Check completed successfully."
+                    } catch (Exception e) {
+                        echo "❌ Dependency Check encountered an issue: ${e.message}"
+                    }
+                }
+            }
+            post {
+                always {
+                    publishHTML(
+                        target: [
+                            reportName: 'Dependency Check Report',
+                            reportDir: 'dependency-check-report',
+                            reportFiles: 'dependency-check-report.html',
+                            keepAll: true,
+                            alwaysLinkToLastBuild: true,
+                            allowMissing: false  // Consider `true` if report generation might fail.
+                        ]
+                    )
+                }
+>>>>>>> 285dd33 (enhanced jenkinsfile)
             }
         }
     }
+    
     post {
         success {
-            echo 'The CI pipeline has completed successfully. The application is ready for further deployment and testing.'
+            echo '''
+            ╔═══════════════════════════════════════════════════╗
+            ║ ✨ CI Pipeline Completed Successfully            ║
+            ╚═══════════════════════════════════════════════════╝
+            '''
+            echo "Artifact created: ${ARTIFACT_NAME}"
+            echo "Ready for further deployment and testing."
         }
+        
         failure {
+<<<<<<< HEAD
             echo 'The CI pipeline has encountered an issue. Please check the logs for more information.'
         }
         always {
@@ -73,3 +175,9 @@ pipeline {
         }
     }
 }
+=======
+            echo '''
+            ╔═══════════════════════════════════════════════════╗
+            ║ ❌ CI Pipeline Encountered Issues               ║
+            ╚═══════════════════════════════════════════════════╝
+>>>>>>> 285dd33 (enhanced jenkinsfile)
