@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # ═══════════════════════════════════════════════════════════════
-# 🔒 Enhanced Trivy Security Scanner Script
+# 🔒 Trivy Security Scanner Script
 # Author: Mariem BENMABROUK
-# Description: Comprehensive security scanning with custom reporting
+# Description: Comprehensive security scanning for Docker images and filesystem
 # ═══════════════════════════════════════════════════════════════
 
 # Color codes for pretty output
@@ -16,7 +16,6 @@ BOLD='\033[1m'
 
 # Configuration variables
 REPORTS_DIR="./trivy-reports"
-TEMPLATES_DIR="./trivy-templates"
 IMAGE_NAME="ghcr.io/meriem1601/ctama-js-backend-app"
 IMAGE_TAG="staging"
 SEVERITY_LEVEL="CRITICAL,HIGH"
@@ -63,200 +62,19 @@ handle_error() {
     exit 1
 }
 
-# Create necessary directories
-create_directories() {
-    print_progress "Creating necessary directories..."
-    mkdir -p "${REPORTS_DIR}" "${TEMPLATES_DIR}" || handle_error "Failed to create directories"
-    print_styled "${GREEN}" "✓ Directories created successfully"
+# Create reports directory
+create_reports_dir() {
+    print_progress "Creating reports directory..."
+    mkdir -p "${REPORTS_DIR}" || handle_error "Failed to create reports directory"
+    print_styled "${GREEN}" "✓ Reports directory created successfully"
 }
 
-# Create custom HTML template
-create_custom_template() {
-    print_progress "Creating custom HTML template..."
-    cat > "${TEMPLATES_DIR}/custom.html" << 'EOL'
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Trivy Security Report</title>
-    <style>
-        :root {
-            --primary-color: #2563eb;
-            --danger-color: #dc2626;
-            --warning-color: #f59e0b;
-            --success-color: #16a34a;
-            --info-color: #3b82f6;
-        }
-        
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            line-height: 1.6;
-            margin: 0;
-            padding: 20px;
-            background: #f8fafc;
-            color: #1e293b;
-        }
-        
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            background: white;
-            padding: 2rem;
-            border-radius: 8px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }
-        
-        .header {
-            text-align: center;
-            margin-bottom: 2rem;
-            padding-bottom: 1rem;
-            border-bottom: 2px solid #e2e8f0;
-        }
-        
-        .vulnerability-card {
-            background: white;
-            border: 1px solid #e2e8f0;
-            border-radius: 6px;
-            padding: 1rem;
-            margin-bottom: 1rem;
-        }
-        
-        .severity {
-            display: inline-block;
-            padding: 0.25rem 0.75rem;
-            border-radius: 4px;
-            font-weight: bold;
-            margin-right: 1rem;
-        }
-        
-        .severity.HIGH {
-            background: #fecaca;
-            color: #dc2626;
-        }
-        
-        .severity.CRITICAL {
-            background: #fee2e2;
-            color: #991b1b;
-        }
-        
-        .severity.MEDIUM {
-            background: #fef3c7;
-            color: #b45309;
-        }
-        
-        .severity.LOW {
-            background: #e0f2fe;
-            color: #0369a1;
-        }
-        
-        .metadata {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 1rem;
-            margin: 1rem 0;
-            padding: 1rem;
-            background: #f8fafc;
-            border-radius: 4px;
-        }
-        
-        .links {
-            margin-top: 1rem;
-            padding-top: 1rem;
-            border-top: 1px solid #e2e8f0;
-        }
-        
-        .links a {
-            display: inline-block;
-            margin-right: 1rem;
-            color: var(--primary-color);
-            text-decoration: none;
-        }
-        
-        .links a:hover {
-            text-decoration: underline;
-        }
-        
-        .summary {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 1rem;
-            margin-bottom: 2rem;
-        }
-        
-        .summary-card {
-            padding: 1rem;
-            border-radius: 6px;
-            text-align: center;
-            color: white;
-        }
-        
-        /* [CHANGED] Updated CSS classes to match uppercase severity levels */
-        .summary-card.CRITICAL {
-            background: var(--danger-color);
-        }
-        
-        .summary-card.HIGH {
-            background: var(--warning-color);
-        }
-        
-        .summary-card.MEDIUM {
-            background: var(--info-color);
-        }
-        
-        .summary-card.LOW {
-            background: var(--success-color);
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>Trivy Security Scan Report</h1>
-            <p>Generated on {{ .Date }}</p>
-        </div>
-
-        <div class="summary">
-            {{ range .Severities }}
-            <!-- [CHANGED] Removed ToLower function -->
-            <div class="summary-card {{ .Level }}">
-                <h3>{{ .Level }}</h3>
-                <p>{{ .Count }} vulnerabilities</p>
-            </div>
-            {{ end }}
-        </div>
-
-        {{ range .Vulnerabilities }}
-        <div class="vulnerability-card">
-            <div class="severity {{ .Severity }}">{{ .Severity }}</div>
-            <h3>{{ .ID }}</h3>
-            
-            <div class="metadata">
-                <div>
-                    <strong>Package:</strong> {{ .Package }}
-                </div>
-                <div>
-                    <strong>Installed Version:</strong> {{ .InstalledVersion }}
-                </div>
-                <div>
-                    <strong>Fixed Version:</strong> {{ .FixedVersion }}
-                </div>
-            </div>
-            
-            <p>{{ .Description }}</p>
-            
-            <div class="links">
-                {{ range .References }}
-                <a href="{{ . }}" target="_blank" rel="noopener noreferrer">Reference</a>
-                {{ end }}
-            </div>
-        </div>
-        {{ end }}
-    </div>
-</body>
-</html>
-EOL
-    print_styled "${GREEN}" "✓ Custom HTML template created successfully"
+# Create contrib directory and download the html.tpl template
+download_html_template() {
+    print_progress "Creating contrib directory and downloading HTML template..."
+    mkdir -p contrib
+    curl -o contrib/html.tpl https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/html.tpl || handle_error "Failed to download HTML template"
+    print_styled "${GREEN}" "✓ HTML template downloaded successfully"
 }
 
 # Install Trivy if not present
@@ -279,7 +97,7 @@ scan_filesystem() {
         --severity "${SEVERITY_LEVEL}" \
         --skip-files "${SKIP_FILES[*]}" \
         --format template \
-        --template "@${TEMPLATES_DIR}/custom.html" \
+        --template '@contrib/html.tpl' \
         -o "${REPORTS_DIR}/filesystem-report.html" || handle_error "Filesystem scan failed"
     
     trivy fs . \
@@ -300,7 +118,7 @@ scan_docker_image() {
         --severity "${SEVERITY_LEVEL}" \
         --skip-files "${SKIP_FILES[*]}" \
         --format template \
-        --template "@${TEMPLATES_DIR}/custom.html" \
+        --template '@contrib/html.tpl' \
         -o "${REPORTS_DIR}/docker-report.html" || handle_error "Docker image scan failed"
     
     trivy image "${IMAGE_NAME}:${IMAGE_TAG}" \
@@ -345,10 +163,10 @@ analyze_results() {
 
 # Main execution
 main() {
-    print_header "🚀 Starting Enhanced Security Scan"
+    print_header "🚀 Starting Security Scan"
     
-    create_directories
-    create_custom_template
+    create_reports_dir
+    download_html_template
     install_trivy
     scan_filesystem
     scan_docker_image
@@ -356,9 +174,6 @@ main() {
     
     print_header "✨ Security Scan Completed Successfully"
     print_styled "${GREEN}" "Reports are available in: ${REPORTS_DIR}"
-    print_styled "${BLUE}" "HTML Reports:"
-    echo "  - Filesystem: ${REPORTS_DIR}/filesystem-report.html"
-    echo "  - Docker: ${REPORTS_DIR}/docker-report.html"
 }
 
 # Run main function
