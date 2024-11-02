@@ -13,6 +13,7 @@ pipeline {
         NODE_ENV = 'development'
         ARTIFACT_NAME = "backend-artifact-${BUILD_NUMBER}.tar.gz"
         ARTIFACT_PATH = "${WORKSPACE}/artifacts"
+        TRIVY_REPORTS_DIR = "${WORKSPACE}/trivy-reports"
     }
     
     stages {
@@ -130,7 +131,7 @@ pipeline {
             }
         }
 
-        stage('Docker Build and Push to GHCR') {
+        stage('Build and Push to GHCR') {
             steps {
                 script {
                     try {
@@ -153,6 +154,45 @@ pipeline {
                 }
             }
         }
+
+        stage('Trivy Security Scan') {
+            steps {
+                script {
+                    try {
+                        echo '''
+                        ╔═══════════════════════════════════════════════════╗
+                        ║ 🔒 Running Trivy Security Scans                 ║
+                        ╚═══════════════════════════════════════════════════╝
+                        '''
+                        
+                        // Run the Trivy scan script
+                        sh './trivy-scan.sh'
+                        
+                        echo "✅ Trivy security scan executed successfully."
+                    } catch (Exception e) {
+                        error "❌ Security scan failed: ${e.message}"
+                    }
+                }
+            }
+            post {
+                always {
+                    publishHTML([
+                        allowMissing: false,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: 'trivy-reports',
+                        reportFiles: 'filesystem-report.html,docker-report.html',
+                        reportName: 'Trivy Security Reports',
+                        reportTitles: 'Filesystem Scan,Docker Image Scan'
+                    ])
+                    
+                    // Archive JSON reports as artifacts
+                    archiveArtifacts artifacts: "trivy-reports/*.json", 
+                                     fingerprint: true, 
+                                     allowEmptyArchive: true
+                }
+            }
+        }
     }
     
     post {
@@ -164,6 +204,7 @@ pipeline {
             '''
             echo "Artifact created: ${ARTIFACT_NAME}"
             echo "Docker image pushed to GHCR successfully"
+            echo "Security reports available in Jenkins"
             echo "Ready for further deployment and testing."
         }
         
