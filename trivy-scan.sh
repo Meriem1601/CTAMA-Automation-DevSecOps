@@ -191,19 +191,20 @@ create_custom_template() {
             color: white;
         }
         
-        .summary-card.critical {
+        /* [CHANGED] Updated CSS classes to match uppercase severity levels */
+        .summary-card.CRITICAL {
             background: var(--danger-color);
         }
         
-        .summary-card.high {
+        .summary-card.HIGH {
             background: var(--warning-color);
         }
         
-        .summary-card.medium {
+        .summary-card.MEDIUM {
             background: var(--info-color);
         }
         
-        .summary-card.low {
+        .summary-card.LOW {
             background: var(--success-color);
         }
     </style>
@@ -217,7 +218,8 @@ create_custom_template() {
 
         <div class="summary">
             {{ range .Severities }}
-            <div class="summary-card {{ .Level | ToLower }}">
+            <!-- [CHANGED] Removed ToLower function -->
+            <div class="summary-card {{ .Level }}">
                 <h3>{{ .Level }}</h3>
                 <p>{{ .Count }} vulnerabilities</p>
             </div>
