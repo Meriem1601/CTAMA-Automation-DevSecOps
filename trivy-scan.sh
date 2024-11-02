@@ -20,6 +20,14 @@ IMAGE_NAME="ghcr.io/meriem1601/ctama-js-backend-app"
 IMAGE_TAG="staging"
 SEVERITY_LEVEL="CRITICAL,HIGH"
 
+# Define large files to skip
+SKIP_FILES=(
+    "dependency-check-report/dependency-check-report.html"
+    "dependency-check-report/dependency-check-report.json"
+    "dependency-check-report/dependency-check-report.xml"
+    "dependency-check.log"
+)
+
 # Function for styled echo
 print_styled() {
     local style=$1
@@ -61,6 +69,14 @@ create_reports_dir() {
     print_styled "${GREEN}" "✓ Reports directory created successfully"
 }
 
+# Create contrib directory and download the html.tpl template
+download_html_template() {
+    print_progress "Creating contrib directory and downloading HTML template..."
+    mkdir -p contrib
+    curl -o contrib/html.tpl https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/html.tpl || handle_error "Failed to download HTML template"
+    print_styled "${GREEN}" "✓ HTML template downloaded successfully"
+}
+
 # Install Trivy if not present
 install_trivy() {
     if ! check_command trivy; then
@@ -79,12 +95,14 @@ scan_filesystem() {
     print_progress "Running filesystem scan..."
     trivy fs . \
         --severity "${SEVERITY_LEVEL}" \
+        --skip-files "${SKIP_FILES[*]}" \
         --format template \
         --template '@contrib/html.tpl' \
         -o "${REPORTS_DIR}/filesystem-report.html" || handle_error "Filesystem scan failed"
     
     trivy fs . \
         --severity "${SEVERITY_LEVEL}" \
+        --skip-files "${SKIP_FILES[*]}" \
         --format json \
         -o "${REPORTS_DIR}/filesystem-report.json" || handle_error "Filesystem JSON report generation failed"
     
@@ -98,12 +116,14 @@ scan_docker_image() {
     print_progress "Running Docker image scan..."
     trivy image "${IMAGE_NAME}:${IMAGE_TAG}" \
         --severity "${SEVERITY_LEVEL}" \
+        --skip-files "${SKIP_FILES[*]}" \
         --format template \
         --template '@contrib/html.tpl' \
         -o "${REPORTS_DIR}/docker-report.html" || handle_error "Docker image scan failed"
     
     trivy image "${IMAGE_NAME}:${IMAGE_TAG}" \
         --severity "${SEVERITY_LEVEL}" \
+        --skip-files "${SKIP_FILES[*]}" \
         --format json \
         -o "${REPORTS_DIR}/docker-report.json" || handle_error "Docker JSON report generation failed"
     
@@ -146,6 +166,7 @@ main() {
     print_header "🚀 Starting Security Scan"
     
     create_reports_dir
+    download_html_template
     install_trivy
     scan_filesystem
     scan_docker_image
