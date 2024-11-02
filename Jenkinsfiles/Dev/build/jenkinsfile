@@ -123,9 +123,33 @@ pipeline {
                             reportFiles: 'dependency-check-report.html',
                             keepAll: true,
                             alwaysLinkToLastBuild: true,
-                            allowMissing: false  // Consider `true` if report generation might fail.
+                            allowMissing: false
                         ]
                     )
+                }
+            }
+        }
+
+        stage('Docker Build and Push to GHCR') {
+            steps {
+                script {
+                    try {
+                        echo '''
+                        ╔═══════════════════════════════════════════════════╗
+                        ║ 🐳 Building and Pushing Docker Image to GHCR    ║
+                        ╚═══════════════════════════════════════════════════╝
+                        '''
+                        
+                        withCredentials([string(credentialsId: 'github-token', variable: 'GITHUB_TOKEN')]) {
+                            // Make the script executable
+                            sh 'chmod +x ./ghcr_deploy.sh'
+                            // Execute the script
+                            sh './ghcr_deploy.sh'
+                        }
+                        echo "✅ Docker image successfully built and pushed to GHCR."
+                    } catch (Exception e) {
+                        error "❌ Failed to build or push Docker image: ${e.message}"
+                    }
                 }
             }
         }
@@ -139,6 +163,7 @@ pipeline {
             ╚═══════════════════════════════════════════════════╝
             '''
             echo "Artifact created: ${ARTIFACT_NAME}"
+            echo "Docker image pushed to GHCR successfully"
             echo "Ready for further deployment and testing."
         }
         
