@@ -1,0 +1,22 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-app-and-team-labels
+spec:
+  validationFailureAction: Enforce  
+  background: false  
+  rules:
+  - name: check-deployment-labels
+    match:
+      resources:
+        kinds:
+        - Deployment  
+        namespaces:
+        - devsecops-prod 
+    validate:
+      message: "Deployments must have 'app' and 'team' labels. 'app' must start with 'app-' and 'team' must start with 'team-'."
+      pattern:
+        metadata:
+          labels:
+            app: "app-*"
+            team: "team-*"

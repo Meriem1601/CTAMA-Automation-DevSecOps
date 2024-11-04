@@ -1,0 +1,28 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: enforce-resource-limits
+spec:
+  validationFailureAction: Enforce
+  background: false
+  rules:
+  - name: require-limits
+    match:
+      resources:
+        kinds:
+        - Pod
+        namespaces:
+        - devsecops-prod
+    validate:
+      message: "All containers must specify resource limits in the production environment."
+      pattern:
+        spec:
+          containers:
+          - resources:
+              limits:
+                memory: "*"
+                cpu: "*"
+              requests:
+                memory: "*"
+                cpu: "*"
+

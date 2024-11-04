@@ -1,0 +1,22 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-privileged-containers
+spec:
+  validationFailureAction: Enforce  
+  background: False
+  rules:
+  - name: no-privileged-containers
+    match:
+      resources:
+        kinds:
+        - Pod
+        namespaces:
+        - devsecops-prod
+    validate:
+      message: "Privileged containers are not allowed in the production environment."
+      pattern:
+        spec:
+          containers:
+          - securityContext:
+              privileged: false  
