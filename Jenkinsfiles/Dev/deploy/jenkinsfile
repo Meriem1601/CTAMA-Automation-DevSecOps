@@ -6,7 +6,7 @@ pipeline {
     environment {
         KUBECONFIG = '/root/.kube/config'
         POLICIES_DIR = 'kyverno-policies'
-        MYSQL_DEPLOYMENT_DIR = 'CTAMA-Automation-DevSecOps/mysql-deployment'
+        MYSQL_DEPLOYMENT_DIR = 'mysql-deployment'
     }
     
     stages {
