@@ -3,6 +3,9 @@ kind: StatefulSet
 metadata:
   name: mysql
   namespace: devsecops-prod
+  labels:  # Added labels here
+    team: team-devsecops
+    app: app-mysql
 spec:
   serviceName: "mysql"
   replicas: 1
@@ -13,6 +16,8 @@ spec:
     metadata:
       labels:
         app: mysql
+        team: team-devsecops  # Added labels here
+        app: app-mysql        # Added labels here
     spec:
       containers:
       - name: mysql
@@ -36,6 +41,8 @@ spec:
           limits:
             memory: "512Mi"
             cpu: "500m"
+        securityContext:  # Set privileged to false
+          privileged: false  
   volumeClaimTemplates:
   - metadata:
       name: mysql-persistent-storage
