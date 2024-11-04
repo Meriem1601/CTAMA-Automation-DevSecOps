@@ -11,13 +11,13 @@ spec:
   replicas: 1
   selector:
     matchLabels:
-      app: mysql
+      app: mysql  # This must match the template labels
+      team: team-devsecops  # Added this to match the template labels
   template:
     metadata:
       labels:
-        app: mysql
-        team: team-devsecops  # Added labels here
-        app: app-mysql        # Added labels here
+        app: mysql  # This must match the selector
+        team: team-devsecops  # Added this to ensure it matches the selector
     spec:
       containers:
       - name: mysql
@@ -42,7 +42,7 @@ spec:
             memory: "512Mi"
             cpu: "500m"
         securityContext:  # Set privileged to false
-          privileged: false  
+          privileged: false  # Ensures the container does not run in privileged mode
   volumeClaimTemplates:
   - metadata:
       name: mysql-persistent-storage
