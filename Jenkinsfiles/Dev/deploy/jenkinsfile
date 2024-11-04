@@ -1,0 +1,60 @@
+pipeline {
+    agent { 
+        label 'EC2-Agent' 
+    }
+    
+    environment {
+        KUBECONFIG = '/root/.kube/config'
+        POLICIES_DIR = 'kyverno-policies'
+    }
+    
+    stages {
+        stage('Check Kyverno') {
+            steps {
+                script {
+                    sh '''
+                        echo "Checking Kyverno namespace and pods..."
+                        kubectl get ns kyverno
+                        kubectl get pods -n kyverno | grep "Running"
+                    '''
+                }
+            }
+        }
+        
+        stage('Deploy Policies') {
+            steps {
+                script {
+                    sh '''
+                        for policy in ${POLICIES_DIR}/*.yaml; do
+                            echo "Applying $policy"
+                            kubectl apply -f "$policy"
+                        done
+                    '''
+                }
+            }
+        }
+
+        stage('Verify') {
+            steps {
+                script {
+                    sh '''
+                        kubectl get clusterpolicies
+                        kubectl get policies --all-namespaces
+                    '''
+                }
+            }
+        }
+    }
+    
+    post {
+        success {
+            echo 'Deployment successful!'
+        }
+        failure {
+            echo 'Deployment failed!'
+        }
+        always {
+            cleanWs()
+        }
+    }
+}
