@@ -6,6 +6,7 @@ pipeline {
     environment {
         KUBECONFIG = '/root/.kube/config'
         POLICIES_DIR = 'kyverno-policies'
+        MYSQL_DEPLOYMENT_DIR = 'CTAMA-Automation-DevSecOps/mysql-deployment'
     }
     
     stages {
@@ -34,12 +35,38 @@ pipeline {
             }
         }
 
-        stage('Verify') {
+        stage('Verify Policies') {
             steps {
                 script {
                     sh '''
                         kubectl get clusterpolicies
                         kubectl get policies --all-namespaces
+                    '''
+                }
+            }
+        }
+
+        stage('Deploy MySQL') {
+            steps {
+                script {
+                    sh '''
+                        echo "Deploying MySQL components..."
+                        for resource in ${MYSQL_DEPLOYMENT_DIR}/*.yaml; do
+                            echo "Applying $resource"
+                            kubectl apply -f "$resource"
+                        done
+                    '''
+                }
+            }
+        }
+
+        stage('Verify MySQL Deployment') {
+            steps {
+                script {
+                    sh '''
+                        echo "Verifying MySQL deployment..."
+                        kubectl get statefulsets
+                        kubectl get services
                     '''
                 }
             }
