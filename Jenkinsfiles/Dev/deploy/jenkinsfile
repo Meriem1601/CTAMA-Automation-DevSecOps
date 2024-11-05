@@ -79,6 +79,10 @@ pipeline {
                     sh '''
                         echo "Deploying Backend components..."
                         for resource in ${BACKEND_DEPLOYMENT_DIR}/*.yaml; do
+                            if [[ "$resource" == *"deployment.yaml" ]]; then
+                                echo "Skipping $resource"
+                                continue
+                            fi
                             echo "Applying $resource"
                             kubectl apply -f "$resource"
                         done
