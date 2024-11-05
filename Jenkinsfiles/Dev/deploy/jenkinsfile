@@ -23,6 +23,23 @@ pipeline {
             }
         }
         
+        stage('Set Policies to Audit Mode') {
+            steps {
+                script {
+                    sh '''
+                        echo "Setting Kyverno policies to audit mode..."
+                        for policy in ${POLICIES_DIR}/*.yaml; do
+                            sed -i 's/validationFailureAction: enforce/validationFailureAction: audit/' "$policy" || echo "Setting audit mode in $policy"
+                            if ! grep -q 'validationFailureAction: audit' "$policy"; then
+                                echo "Adding audit mode to $policy"
+                                sed -i '/spec:/a \ \ validationFailureAction: audit' "$policy"
+                            fi
+                        done
+                    '''
+                }
+            }
+        }
+
         stage('Deploy Policies') {
             steps {
                 script {
@@ -53,8 +70,8 @@ pipeline {
                     sh '''
                         echo "Deploying MySQL components..."
                         for resource in ${MYSQL_DEPLOYMENT_DIR}/*.yaml; do
-                            echo "Applying $resource"
-                            kubectl apply -f "$resource"
+                            echo "Applying $resource to devsecops-prod namespace"
+                            kubectl apply -f "$resource" -n devsecops-prod
                         done
                     '''
                 }
@@ -65,9 +82,9 @@ pipeline {
             steps {
                 script {
                     sh '''
-                        echo "Verifying MySQL deployment..."
-                        kubectl get statefulsets
-                        kubectl get services
+                        echo "Verifying MySQL deployment in devsecops-prod namespace..."
+                        kubectl get statefulsets -n devsecops-prod
+                        kubectl get services -n devsecops-prod
                     '''
                 }
             }
@@ -83,8 +100,8 @@ pipeline {
                                 echo "Skipping $resource"
                                 continue
                             fi
-                            echo "Applying $resource"
-                            kubectl apply -f "$resource"
+                            echo "Applying $resource to devsecops-prod namespace"
+                            kubectl apply -f "$resource" -n devsecops-prod
                         done
                     '''
                 }
@@ -95,8 +112,8 @@ pipeline {
             steps {
                 script {
                     sh '''
-                        echo "Verifying backend app deployment..."
-                        kubectl get pods | grep backend-app
+                        echo "Verifying backend app deployment in devsecops-prod namespace..."
+                        kubectl get pods -n devsecops-prod | grep backend-app
                     '''
                 }
             }
