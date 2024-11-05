@@ -7,6 +7,7 @@ pipeline {
         KUBECONFIG = '/root/.kube/config'
         POLICIES_DIR = 'kyverno-policies'
         MYSQL_DEPLOYMENT_DIR = 'mysql-deployment'
+        BACKEND_DEPLOYMENT_DIR = 'backend-deployment'
     }
     
     stages {
@@ -67,6 +68,31 @@ pipeline {
                         echo "Verifying MySQL deployment..."
                         kubectl get statefulsets
                         kubectl get services
+                    '''
+                }
+            }
+        }
+
+        stage('Deploy Backend') {
+            steps {
+                script {
+                    sh '''
+                        echo "Deploying Backend components..."
+                        for resource in ${BACKEND_DEPLOYMENT_DIR}/*.yaml; do
+                            echo "Applying $resource"
+                            kubectl apply -f "$resource"
+                        done
+                    '''
+                }
+            }
+        }
+
+        stage('Verify Backend App') {
+            steps {
+                script {
+                    sh '''
+                        echo "Verifying backend app deployment..."
+                        kubectl get pods | grep backend-app
                     '''
                 }
             }
