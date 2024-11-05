@@ -26,7 +26,7 @@ spec:
         fsGroup: 1001
       containers:
       - name: backend-app
-        image: ghcr.io/Meriem1601/ctama-js-backend-app:staging
+        image: ghcr.io/meriem1601/ctama-js-backend-app:staging
         ports:
         - containerPort: 3000
         env:
