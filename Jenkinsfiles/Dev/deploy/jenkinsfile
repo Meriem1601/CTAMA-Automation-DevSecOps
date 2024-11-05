@@ -1,15 +1,14 @@
 pipeline {
-    agent { 
-        label 'EC2-Agent' 
+    agent {
+        label 'EC2-Agent'
     }
-    
+
     environment {
         KUBECONFIG = '/root/.kube/config'
-        POLICIES_DIR = 'kyverno-policies'
         MYSQL_DEPLOYMENT_DIR = 'mysql-deployment'
         BACKEND_DEPLOYMENT_DIR = 'backend-deployment'
     }
-    
+
     stages {
         stage('Check Kyverno') {
             steps {
@@ -22,41 +21,12 @@ pipeline {
                 }
             }
         }
-        
-        stage('Set Policies to Audit Mode') {
-            steps {
-                script {
-                    sh '''
-                        echo "Setting Kyverno policies to audit mode..."
-                        for policy in ${POLICIES_DIR}/*.yaml; do
-                            sed -i 's/validationFailureAction: enforce/validationFailureAction: audit/' "$policy" || echo "Setting audit mode in $policy"
-                            if ! grep -q 'validationFailureAction: audit' "$policy"; then
-                                echo "Adding audit mode to $policy"
-                                sed -i '/spec:/a \ \ validationFailureAction: audit' "$policy"
-                            fi
-                        done
-                    '''
-                }
-            }
-        }
-
-        stage('Deploy Policies') {
-            steps {
-                script {
-                    sh '''
-                        for policy in ${POLICIES_DIR}/*.yaml; do
-                            echo "Applying $policy"
-                            kubectl apply -f "$policy"
-                        done
-                    '''
-                }
-            }
-        }
 
         stage('Verify Policies') {
             steps {
                 script {
                     sh '''
+                        echo "Verifying Kyverno policies:"
                         kubectl get clusterpolicies
                         kubectl get policies --all-namespaces
                     '''
@@ -119,7 +89,7 @@ pipeline {
             }
         }
     }
-    
+
     post {
         success {
             echo 'Deployment successful!'
