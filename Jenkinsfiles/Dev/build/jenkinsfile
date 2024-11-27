@@ -167,10 +167,10 @@ pipeline {
                         '''
                         
                         // Make the script executable
-                        sh 'chmod +x ./trivy.sh'
+                        sh 'chmod +x ./trivy-scan.sh'
                         
                         // Execute the Trivy scan script
-                        sh './trivy.sh'
+                        sh './trivy-scan.sh'
                         
                         echo "✅ Trivy security scan completed successfully."
                     } catch (Exception e) {
