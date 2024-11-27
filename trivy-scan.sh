@@ -118,24 +118,7 @@ scan_docker_image() {
     print_styled "${GREEN}" "✓ Docker image scan completed"
 }
 
-# Scan Dockerfile for potential issues
-scan_dockerfile() {
-    # Path to the Dockerfile
-    dockerfile_path="Dockerfile"  
-    
-    # Output location for the report
-    report_file="trivy-report.txt"
-    
-    # Running Trivy scan in table format
-    print_header "🐳 Scanning Dockerfile at $dockerfile_path"
-    
-    print_progress "Running Dockerfile scan..."
-    trivy file "$dockerfile_path" \
-        --format table \
-        -o "$report_file" || handle_error "Dockerfile scan failed"
-    
-    print_styled "${GREEN}" "✓ Dockerfile scan completed"
-}
+# Removed Dockerfile scan (scan_dockerfile function has been deleted)
 
 # Detailed vulnerability information in the analysis
 analyze_results() {
@@ -151,17 +134,12 @@ analyze_results() {
     local docker_critical=$(grep -o "CRITICAL" "${REPORTS_DIR}/docker-image-report.table" | wc -l)
     local docker_high=$(grep -o "HIGH" "${REPORTS_DIR}/docker-image-report.table" | wc -l)
     
-    # Count vulnerabilities from Dockerfile scan
-    local dockerfile_critical=$(grep -o "CRITICAL" "${REPORTS_DIR}/dockerfile-report.table" | wc -l)
-    local dockerfile_high=$(grep -o "HIGH" "${REPORTS_DIR}/dockerfile-report.table" | wc -l)
-    
     echo -e "\n📊 ${BOLD}Summary of Findings:${NC}"
     echo -e "╔════════════════════╦══════════════╦═════════════╦═══════════════════╗"
     echo -e "║      Scan Type     ║   Critical   ║    High     ║ Vulnerabilities   ║"
     echo -e "╠════════════════════╬══════════════╬═════════════╬═══════════════════╣"
     echo -e "║ Filesystem         ║     ${fs_critical}        ║     ${fs_high}       ║ $(grep -o "CRITICAL" "${REPORTS_DIR}/filesystem-report.table" | wc -l) critical, $(grep -o "HIGH" "${REPORTS_DIR}/filesystem-report.table" | wc -l) high ║"
     echo -e "║ Docker Image       ║     ${docker_critical}        ║     ${docker_high}       ║ $(grep -o "CRITICAL" "${REPORTS_DIR}/docker-image-report.table" | wc -l) critical, $(grep -o "HIGH" "${REPORTS_DIR}/docker-image-report.table" | wc -l) high ║"
-    echo -e "║ Dockerfile         ║     ${dockerfile_critical}        ║     ${dockerfile_high}       ║ $(grep -o "CRITICAL" "${REPORTS_DIR}/dockerfile-report.table" | wc -l) critical, $(grep -o "HIGH" "${REPORTS_DIR}/dockerfile-report.table" | wc -l) high ║"
     echo -e "╚════════════════════╩══════════════╩═════════════╩═══════════════════╝"
     
     print_styled "${GREEN}" "✓ Analysis completed"
@@ -175,7 +153,6 @@ main() {
     install_trivy
     scan_filesystem
     scan_docker_image
-    scan_dockerfile
     analyze_results
     print_styled "${GREEN}" "✅ Trivy Scan Completed Successfully!"
 }
