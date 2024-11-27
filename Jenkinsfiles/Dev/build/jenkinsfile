@@ -101,8 +101,6 @@ pipeline {
                                 --prettyPrint 
                                 --log dependency-check.log
                                 --noupdate
-                                --disableYarnAudit \
-                                --disableAssemblyAnalyzer \
                             ''',
                             odcInstallation: 'OWASP Dependency-Check Vulnerabilities'
                         )
