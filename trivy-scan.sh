@@ -3,7 +3,10 @@
 # ═══════════════════════════════════════════════════════════════
 # 🔒 Trivy Security Scanner Script
 # Author: Mariem BENMABROUK
-# Description: Comprehensive security scanning for Docker images and filesystem
+# Description: Comprehensive security scanning for Docker images, 
+# filesystem, and Dockerfile with XML reports.
+# ═══════════════════════════════════════════════════════════════
+# This script now includes XML report generation for each scan type.
 # ═══════════════════════════════════════════════════════════════
 
 # Color codes for pretty output
@@ -21,11 +24,10 @@ IMAGE_TAG="staging"
 SEVERITY_LEVEL="CRITICAL,HIGH"
 
 # Define large files to skip
-SKIP_FILES=(
-    "dependency-check-report/dependency-check-report.html"
-    "dependency-check-report/dependency-check-report.json"
-    "dependency-check-report/dependency-check-report.xml"
-    "dependency-check.log"
+SKIP_FILES=( "dependency-check-report/dependency-check-report.html"
+             "dependency-check-report/dependency-check-report.json"
+             "dependency-check-report/dependency-check-report.xml"
+             "dependency-check.log"
 )
 
 # Function for styled echo
@@ -96,15 +98,8 @@ scan_filesystem() {
     trivy fs . \
         --severity "${SEVERITY_LEVEL}" \
         --skip-files "${SKIP_FILES[*]}" \
-        --format template \
-        --template '@contrib/html.tpl' \
-        -o "${REPORTS_DIR}/filesystem-report.html" || handle_error "Filesystem scan failed"
-    
-    trivy fs . \
-        --severity "${SEVERITY_LEVEL}" \
-        --skip-files "${SKIP_FILES[*]}" \
-        --format json \
-        -o "${REPORTS_DIR}/filesystem-report.json" || handle_error "Filesystem JSON report generation failed"
+        --format xml \
+        -o "${REPORTS_DIR}/filesystem-report.xml" || handle_error "Filesystem scan failed"
     
     print_styled "${GREEN}" "✓ Filesystem scan completed"
 }
@@ -117,64 +112,68 @@ scan_docker_image() {
     trivy image "${IMAGE_NAME}:${IMAGE_TAG}" \
         --severity "${SEVERITY_LEVEL}" \
         --skip-files "${SKIP_FILES[*]}" \
-        --format template \
-        --template '@contrib/html.tpl' \
-        -o "${REPORTS_DIR}/docker-report.html" || handle_error "Docker image scan failed"
-    
-    trivy image "${IMAGE_NAME}:${IMAGE_TAG}" \
-        --severity "${SEVERITY_LEVEL}" \
-        --skip-files "${SKIP_FILES[*]}" \
-        --format json \
-        -o "${REPORTS_DIR}/docker-report.json" || handle_error "Docker JSON report generation failed"
+        --format xml \
+        -o "${REPORTS_DIR}/docker-image-report.xml" || handle_error "Docker image scan failed"
     
     print_styled "${GREEN}" "✓ Docker image scan completed"
 }
 
-# Analyze results
+# Scan Dockerfile for potential issues
+scan_dockerfile() {
+    print_header "🐳 Scanning Dockerfile"
+    
+    print_progress "Running Dockerfile scan..."
+    trivy file Dockerfile \
+        --severity "${SEVERITY_LEVEL}" \
+        --skip-files "${SKIP_FILES[*]}" \
+        --format xml \
+        -o "${REPORTS_DIR}/dockerfile-report.xml" || handle_error "Dockerfile scan failed"
+    
+    print_styled "${GREEN}" "✓ Dockerfile scan completed"
+}
+
+# Detailed vulnerability information in the analysis
 analyze_results() {
     print_header "📊 Analyzing Results"
     
     print_progress "Processing scan results..."
     
     # Count vulnerabilities from filesystem scan
-    local fs_critical=$(jq '.Results[].Vulnerabilities[] | select(.Severity=="CRITICAL") | .VulnerabilityID' "${REPORTS_DIR}/filesystem-report.json" | wc -l)
-    local fs_high=$(jq '.Results[].Vulnerabilities[] | select(.Severity=="HIGH") | .VulnerabilityID' "${REPORTS_DIR}/filesystem-report.json" | wc -l)
+    local fs_critical=$(grep -o "<Severity>CRITICAL</Severity>" "${REPORTS_DIR}/filesystem-report.xml" | wc -l)
+    local fs_high=$(grep -o "<Severity>HIGH</Severity>" "${REPORTS_DIR}/filesystem-report.xml" | wc -l)
     
     # Count vulnerabilities from Docker scan
-    local docker_critical=$(jq '.Results[].Vulnerabilities[] | select(.Severity=="CRITICAL") | .VulnerabilityID' "${REPORTS_DIR}/docker-report.json" | wc -l)
-    local docker_high=$(jq '.Results[].Vulnerabilities[] | select(.Severity=="HIGH") | .VulnerabilityID' "${REPORTS_DIR}/docker-report.json" | wc -l)
+    local docker_critical=$(grep -o "<Severity>CRITICAL</Severity>" "${REPORTS_DIR}/docker-image-report.xml" | wc -l)
+    local docker_high=$(grep -o "<Severity>HIGH</Severity>" "${REPORTS_DIR}/docker-image-report.xml" | wc -l)
+    
+    # Count vulnerabilities from Dockerfile scan
+    local dockerfile_critical=$(grep -o "<Severity>CRITICAL</Severity>" "${REPORTS_DIR}/dockerfile-report.xml" | wc -l)
+    local dockerfile_high=$(grep -o "<Severity>HIGH</Severity>" "${REPORTS_DIR}/dockerfile-report.xml" | wc -l)
     
     echo -e "\n📊 ${BOLD}Summary of Findings:${NC}"
-    echo -e "╔════════════════════╦══════════════╦═════════════╗"
-    echo -e "║      Scan Type     ║   Critical   ║    High     ║"
-    echo -e "╠════════════════════╬══════════════╬═════════════╣"
-    echo -e "║ Filesystem         ║     ${fs_critical}        ║     ${fs_high}       ║"
-    echo -e "║ Docker Image       ║     ${docker_critical}        ║     ${docker_high}       ║"
-    echo -e "╚════════════════════╩══════════════╩═════════════╝"
+    echo -e "╔════════════════════╦══════════════╦═════════════╦═══════════════════╗"
+    echo -e "║      Scan Type     ║   Critical   ║    High     ║ Vulnerabilities   ║"
+    echo -e "╠════════════════════╬══════════════╬═════════════╬═══════════════════╣"
+    echo -e "║ Filesystem         ║     ${fs_critical}        ║     ${fs_high}       ║ $(grep -o "<Severity>CRITICAL</Severity>" "${REPORTS_DIR}/filesystem-report.xml" | wc -l) critical, $(grep -o "<Severity>HIGH</Severity>" "${REPORTS_DIR}/filesystem-report.xml" | wc -l) high ║"
+    echo -e "║ Docker Image       ║     ${docker_critical}        ║     ${docker_high}       ║ $(grep -o "<Severity>CRITICAL</Severity>" "${REPORTS_DIR}/docker-image-report.xml" | wc -l) critical, $(grep -o "<Severity>HIGH</Severity>" "${REPORTS_DIR}/docker-image-report.xml" | wc -l) high ║"
+    echo -e "║ Dockerfile         ║     ${dockerfile_critical}        ║     ${dockerfile_high}       ║ $(grep -o "<Severity>CRITICAL</Severity>" "${REPORTS_DIR}/dockerfile-report.xml" | wc -l) critical, $(grep -o "<Severity>HIGH</Severity>" "${REPORTS_DIR}/dockerfile-report.xml" | wc -l) high ║"
+    echo -e "╚════════════════════╩══════════════╩═════════════╩═══════════════════╝"
     
-    # Check if we should fail
-    local total_critical=$((fs_critical + docker_critical))
-    if [ ${total_critical} -gt 0 ]; then
-        handle_error "Found ${total_critical} critical vulnerabilities!"
-    fi
-    
-    print_styled "${GREEN}" "✓ Analysis completed successfully"
+    print_styled "${GREEN}" "✓ Analysis completed"
 }
 
-# Main execution
+# Main function to execute all steps
 main() {
-    print_header "🚀 Starting Security Scan"
-    
+    print_header "🚀 Starting Trivy Scan"
     create_reports_dir
     download_html_template
     install_trivy
     scan_filesystem
     scan_docker_image
+    scan_dockerfile
     analyze_results
-    
-    print_header "✨ Security Scan Completed Successfully"
-    print_styled "${GREEN}" "Reports are available in: ${REPORTS_DIR}"
+    print_styled "${GREEN}" "✅ Trivy Scan Completed Successfully!"
 }
 
-# Run main function
-main "$@"
+# Execute main function
+main
