@@ -120,14 +120,19 @@ scan_docker_image() {
 
 # Scan Dockerfile for potential issues
 scan_dockerfile() {
-    print_header "🐳 Scanning Dockerfile"
+    # Path to the Dockerfile
+    dockerfile_path="Dockerfile"  
+    
+    # Output location for the report
+    report_file="trivy-report.txt"
+    
+    # Running Trivy scan in table format
+    print_header "🐳 Scanning Dockerfile at $dockerfile_path"
     
     print_progress "Running Dockerfile scan..."
-    trivy file Dockerfile \
-        --severity "${SEVERITY_LEVEL}" \
-        --skip-files "${SKIP_FILES[*]}" \
+    trivy file "$dockerfile_path" \
         --format table \
-        || handle_error "Dockerfile scan failed"
+        -o "$report_file" || handle_error "Dockerfile scan failed"
     
     print_styled "${GREEN}" "✓ Dockerfile scan completed"
 }
