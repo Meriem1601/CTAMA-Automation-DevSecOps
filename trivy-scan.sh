@@ -4,9 +4,9 @@
 # 🔒 Trivy Security Scanner Script
 # Author: Mariem BENMABROUK
 # Description: Comprehensive security scanning for Docker images, 
-# filesystem, and Dockerfile with XML reports.
+# filesystem, and Dockerfile with table format for results.
 # ═══════════════════════════════════════════════════════════════
-# This script now includes XML report generation for each scan type.
+# This script now includes table format for output display.
 # ═══════════════════════════════════════════════════════════════
 
 # Color codes for pretty output
@@ -98,8 +98,8 @@ scan_filesystem() {
     trivy fs . \
         --severity "${SEVERITY_LEVEL}" \
         --skip-files "${SKIP_FILES[*]}" \
-        --format xml \
-        -o "${REPORTS_DIR}/filesystem-report.xml" || handle_error "Filesystem scan failed"
+        --format table \
+        || handle_error "Filesystem scan failed"
     
     print_styled "${GREEN}" "✓ Filesystem scan completed"
 }
@@ -112,8 +112,8 @@ scan_docker_image() {
     trivy image "${IMAGE_NAME}:${IMAGE_TAG}" \
         --severity "${SEVERITY_LEVEL}" \
         --skip-files "${SKIP_FILES[*]}" \
-        --format xml \
-        -o "${REPORTS_DIR}/docker-image-report.xml" || handle_error "Docker image scan failed"
+        --format table \
+        || handle_error "Docker image scan failed"
     
     print_styled "${GREEN}" "✓ Docker image scan completed"
 }
@@ -126,8 +126,8 @@ scan_dockerfile() {
     trivy file Dockerfile \
         --severity "${SEVERITY_LEVEL}" \
         --skip-files "${SKIP_FILES[*]}" \
-        --format xml \
-        -o "${REPORTS_DIR}/dockerfile-report.xml" || handle_error "Dockerfile scan failed"
+        --format table \
+        || handle_error "Dockerfile scan failed"
     
     print_styled "${GREEN}" "✓ Dockerfile scan completed"
 }
@@ -139,24 +139,24 @@ analyze_results() {
     print_progress "Processing scan results..."
     
     # Count vulnerabilities from filesystem scan
-    local fs_critical=$(grep -o "<Severity>CRITICAL</Severity>" "${REPORTS_DIR}/filesystem-report.xml" | wc -l)
-    local fs_high=$(grep -o "<Severity>HIGH</Severity>" "${REPORTS_DIR}/filesystem-report.xml" | wc -l)
+    local fs_critical=$(grep -o "CRITICAL" "${REPORTS_DIR}/filesystem-report.table" | wc -l)
+    local fs_high=$(grep -o "HIGH" "${REPORTS_DIR}/filesystem-report.table" | wc -l)
     
     # Count vulnerabilities from Docker scan
-    local docker_critical=$(grep -o "<Severity>CRITICAL</Severity>" "${REPORTS_DIR}/docker-image-report.xml" | wc -l)
-    local docker_high=$(grep -o "<Severity>HIGH</Severity>" "${REPORTS_DIR}/docker-image-report.xml" | wc -l)
+    local docker_critical=$(grep -o "CRITICAL" "${REPORTS_DIR}/docker-image-report.table" | wc -l)
+    local docker_high=$(grep -o "HIGH" "${REPORTS_DIR}/docker-image-report.table" | wc -l)
     
     # Count vulnerabilities from Dockerfile scan
-    local dockerfile_critical=$(grep -o "<Severity>CRITICAL</Severity>" "${REPORTS_DIR}/dockerfile-report.xml" | wc -l)
-    local dockerfile_high=$(grep -o "<Severity>HIGH</Severity>" "${REPORTS_DIR}/dockerfile-report.xml" | wc -l)
+    local dockerfile_critical=$(grep -o "CRITICAL" "${REPORTS_DIR}/dockerfile-report.table" | wc -l)
+    local dockerfile_high=$(grep -o "HIGH" "${REPORTS_DIR}/dockerfile-report.table" | wc -l)
     
     echo -e "\n📊 ${BOLD}Summary of Findings:${NC}"
     echo -e "╔════════════════════╦══════════════╦═════════════╦═══════════════════╗"
     echo -e "║      Scan Type     ║   Critical   ║    High     ║ Vulnerabilities   ║"
     echo -e "╠════════════════════╬══════════════╬═════════════╬═══════════════════╣"
-    echo -e "║ Filesystem         ║     ${fs_critical}        ║     ${fs_high}       ║ $(grep -o "<Severity>CRITICAL</Severity>" "${REPORTS_DIR}/filesystem-report.xml" | wc -l) critical, $(grep -o "<Severity>HIGH</Severity>" "${REPORTS_DIR}/filesystem-report.xml" | wc -l) high ║"
-    echo -e "║ Docker Image       ║     ${docker_critical}        ║     ${docker_high}       ║ $(grep -o "<Severity>CRITICAL</Severity>" "${REPORTS_DIR}/docker-image-report.xml" | wc -l) critical, $(grep -o "<Severity>HIGH</Severity>" "${REPORTS_DIR}/docker-image-report.xml" | wc -l) high ║"
-    echo -e "║ Dockerfile         ║     ${dockerfile_critical}        ║     ${dockerfile_high}       ║ $(grep -o "<Severity>CRITICAL</Severity>" "${REPORTS_DIR}/dockerfile-report.xml" | wc -l) critical, $(grep -o "<Severity>HIGH</Severity>" "${REPORTS_DIR}/dockerfile-report.xml" | wc -l) high ║"
+    echo -e "║ Filesystem         ║     ${fs_critical}        ║     ${fs_high}       ║ $(grep -o "CRITICAL" "${REPORTS_DIR}/filesystem-report.table" | wc -l) critical, $(grep -o "HIGH" "${REPORTS_DIR}/filesystem-report.table" | wc -l) high ║"
+    echo -e "║ Docker Image       ║     ${docker_critical}        ║     ${docker_high}       ║ $(grep -o "CRITICAL" "${REPORTS_DIR}/docker-image-report.table" | wc -l) critical, $(grep -o "HIGH" "${REPORTS_DIR}/docker-image-report.table" | wc -l) high ║"
+    echo -e "║ Dockerfile         ║     ${dockerfile_critical}        ║     ${dockerfile_high}       ║ $(grep -o "CRITICAL" "${REPORTS_DIR}/dockerfile-report.table" | wc -l) critical, $(grep -o "HIGH" "${REPORTS_DIR}/dockerfile-report.table" | wc -l) high ║"
     echo -e "╚════════════════════╩══════════════╩═════════════╩═══════════════════╝"
     
     print_styled "${GREEN}" "✓ Analysis completed"
