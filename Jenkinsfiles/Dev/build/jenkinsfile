@@ -100,6 +100,7 @@ pipeline {
                                 -f 'ALL' 
                                 --prettyPrint 
                                 --log dependency-check.log
+                                --noupdate
                             ''',
                             odcInstallation: 'OWASP Dependency-Check Vulnerabilities'
                         )
