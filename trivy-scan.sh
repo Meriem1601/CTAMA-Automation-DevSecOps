@@ -118,8 +118,6 @@ scan_docker_image() {
     print_styled "${GREEN}" "✓ Docker image scan completed"
 }
 
-# Removed Dockerfile scan (scan_dockerfile function has been deleted)
-
 # Detailed vulnerability information in the analysis
 analyze_results() {
     print_header "📊 Analyzing Results"
