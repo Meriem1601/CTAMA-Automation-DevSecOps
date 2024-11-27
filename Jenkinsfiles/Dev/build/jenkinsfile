@@ -2,20 +2,20 @@ pipeline {
     agent {
         label 'EC2-Agent'
     }
-    
+
     options {
         timeout(time: 60, unit: 'MINUTES')
         disableConcurrentBuilds()
         ansiColor('xterm')
     }
-    
+
     environment {
         NODE_ENV = 'development'
         ARTIFACT_NAME = "backend-artifact-${BUILD_NUMBER}.tar.gz"
         ARTIFACT_PATH = "${WORKSPACE}/artifacts"
         TRIVY_REPORTS_DIR = "${WORKSPACE}/trivy-reports"
     }
-    
+
     stages {
         stage('Welcome') {
             steps {
@@ -28,7 +28,7 @@ pipeline {
                 echo 'Performing comprehensive code quality, security, and artifact creation checks.'
             }
         }
-        
+
         stage('Build Artifact') {
             parallel {
                 stage('Install Dependencies') {
@@ -36,7 +36,7 @@ pipeline {
                         sh 'npm install --silent'
                     }
                 }
-                
+
                 stage('Create Artifact') {
                     steps {
                         script {
@@ -71,14 +71,14 @@ pipeline {
                 }
             }
         }
-        
+
         stage('SonarQube - SAST Analysis') {
             steps {
                 script {
                     try {
                         withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
-                          sh 'chmod +x Sonar_codeQuaity.sh'
-                          sh './Sonar_codeQuaity.sh'
+                            sh 'chmod +x Sonar_codeQuaity.sh'
+                            sh './Sonar_codeQuaity.sh'
                         }
                         echo "✅ SonarQube analysis completed successfully."
                     } catch (Exception e) {
@@ -88,7 +88,7 @@ pipeline {
                 }
             }
         }
-        
+
         stage('OWASP Dependency-Check') {
             steps {
                 script {
@@ -132,8 +132,7 @@ pipeline {
                 }
             }
         }
-        
-        
+
         stage('Docker Build and Push to GHCR') {
             steps {
                 script {
@@ -157,8 +156,34 @@ pipeline {
                 }
             }
         }
+
+        // New Trivy Security Scan Stage
+        stage('Trivy Security Scan') {
+            steps {
+                script {
+                    try {
+                        echo '''
+                        ╔═══════════════════════════════════════════════════╗
+                        ║ 🔒 Running Trivy Security Scan on Docker Image   ║
+                        ╚═══════════════════════════════════════════════════╝
+                        '''
+                        
+                        // Make the script executable
+                        sh 'chmod +x ./trivy.sh'
+                        
+                        // Execute the Trivy scan script
+                        sh './trivy.sh'
+                        
+                        echo "✅ Trivy security scan completed successfully."
+                    } catch (Exception e) {
+                        echo "❌ Trivy security scan encountered an issue: ${e.message}"
+                        error "Trivy security scan failed: ${e.message}"
+                    }
+                }
+            }
+        }
     }
-    
+
     post {
         success {
             echo '''
@@ -166,20 +191,19 @@ pipeline {
             ║ ✨ CI Pipeline Completed Successfully            ║
             ╚═══════════════════════════════════════════════════╝
             '''
-            echo "Artifact created: ${ARTIFACT_NAME}"
-            echo "Security reports available in Jenkins"
-            echo "Ready for further deployment and testing."
+            echo "The backend application has passed all stages successfully."
+            echo "Artifact is ready for deployment, and security checks have been completed."
         }
-        
+
         failure {
             echo '''
             ╔═══════════════════════════════════════════════════╗
-            ║ ❌ CI Pipeline Encountered Issues               ║
+            ║ ❌ CI Pipeline Encountered Issues                ║
             ╚═══════════════════════════════════════════════════╝
             '''
             echo "Please review the pipeline logs for detailed error information."
         }
-        
+
         always {
             cleanWs()
         }
