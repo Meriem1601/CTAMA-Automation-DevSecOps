@@ -40,10 +40,8 @@ pipeline {
                 stage('Create Artifact') {
                     steps {
                         script {
-                            // Create artifacts directory if it doesn't exist
                             sh "mkdir -p ${ARTIFACT_PATH}"
                             
-                            // Create artifact with comprehensive exclusions
                             sh """
                                 tar -czvf ${ARTIFACT_PATH}/${ARTIFACT_NAME} \
                                 --exclude='.git' \
@@ -60,7 +58,6 @@ pipeline {
                                 .
                             """
                             
-                            // Here we are Verifying the artifact creation
                             sh "ls -lh ${ARTIFACT_PATH}"
                         }
                     }
@@ -80,14 +77,83 @@ pipeline {
                 script {
                     try {
                         withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
-                          sh './run-sonar.sh'
+                          sh 'chmod +x Sonar_codeQuaity.sh'
+                          sh './Sonar_codeQuaity.sh'
                         }
                         echo "✅ SonarQube analysis completed successfully."
                     } catch (Exception e) {
                         echo "❌ SonarQube analysis encountered an issue: ${e.message}"
+                        error "SonarQube analysis failed: ${e.message}"
                     }
                 }
             }
         }
         
-      
+        stage('OWASP Dependency-Check') {
+            steps {
+                script {
+                    try {
+                        dependencyCheck(
+                            additionalArguments: '''
+                                -o ./dependency-check-report 
+                                -s ./ 
+                                -f 'ALL' 
+                                --prettyPrint 
+                                --log dependency-check.log
+                            ''',
+                            odcInstallation: 'OWASP Dependency-Check Vulnerabilities'
+                        )
+                        
+                        dependencyCheckPublisher(
+                            pattern: 'dependency-check-report/dependency-check-report.xml'
+                        )
+                        
+                        echo "✅ Dependency Check completed successfully."
+                    } catch (Exception e) {
+                        echo "❌ Dependency Check encountered an issue: ${e.message}"
+                    }
+                }
+            }
+            post {
+                always {
+                    publishHTML(
+                        target: [
+                            reportName: 'Dependency Check Report',
+                            reportDir: 'dependency-check-report',
+                            reportFiles: 'dependency-check-report.html',
+                            keepAll: true,
+                            alwaysLinkToLastBuild: true,
+                            allowMissing: false
+                        ]
+                    )
+                }
+            }
+        }
+    }
+    
+    post {
+        success {
+            echo '''
+            ╔═══════════════════════════════════════════════════╗
+            ║ ✨ CI Pipeline Completed Successfully            ║
+            ╚═══════════════════════════════════════════════════╝
+            '''
+            echo "Artifact created: ${ARTIFACT_NAME}"
+            echo "Security reports available in Jenkins"
+            echo "Ready for further deployment and testing."
+        }
+        
+        failure {
+            echo '''
+            ╔═══════════════════════════════════════════════════╗
+            ║ ❌ CI Pipeline Encountered Issues               ║
+            ╚═══════════════════════════════════════════════════╝
+            '''
+            echo "Please review the pipeline logs for detailed error information."
+        }
+        
+        always {
+            cleanWs()
+        }
+    }
+}
