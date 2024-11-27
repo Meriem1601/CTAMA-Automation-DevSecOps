@@ -1,0 +1,6 @@
+projectKey=CTAMA-Automation-DevSecOps
+serverUrl=http://16.16.118.25:9000
+serverVersion=10.6.0.92116
+dashboardUrl=http://16.16.118.25:9000/dashboard?id=CTAMA-Automation-DevSecOps
+ceTaskId=5a49f4cd-ba4c-416b-b60f-81e7ed03b246
+ceTaskUrl=http://16.16.118.25:9000/api/ce/task?id=5a49f4cd-ba4c-416b-b60f-81e7ed03b246
