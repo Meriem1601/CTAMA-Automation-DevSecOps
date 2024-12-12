@@ -112,7 +112,6 @@ pipeline {
                 slackSend(
                     channel: SLACK_CHANNEL,
                     color: 'good',
-                    tokenCredentialId: 'slack-cred',
                     message: """
 🎉 *Deployment Successfully Completed!* 🚀
 
@@ -142,7 +141,6 @@ pipeline {
                 slackSend(
                     channel: SLACK_CHANNEL,
                     color: 'danger',
-                    tokenCredentialId: 'slack-webhook',
                     message: """
 ❌ *Deployment Failed!* 💥
 
