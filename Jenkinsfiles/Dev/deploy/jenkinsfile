@@ -7,84 +7,106 @@ pipeline {
         KUBECONFIG = '/root/.kube/config'
         MYSQL_DEPLOYMENT_DIR = 'mysql-deployment'
         BACKEND_DEPLOYMENT_DIR = 'backend-deployment'
-        SLACK_CHANNEL = '#all-devsecopsmasters'
+        SLACK_CHANNEL = '#were-building-a-cutting-edge-devsecops-solution'
     }
 
     stages {
-        stage('Check Kyverno') {
+        stage('🚀 Validate Kubernetes Environment') {
             steps {
                 script {
-                    echo "Checking Kyverno namespace and pods..."
                     sh '''
-                        kubectl get ns kyverno
-                        kubectl get pods -n kyverno | grep "Running"
+                        echo "🌐 Checking Kubernetes cluster readiness..."
+                        kubectl cluster-info
+                        kubectl get nodes
                     '''
                 }
             }
         }
 
-        stage('Verify Policies') {
+        stage('🛡️ Verify Kyverno Security Policies') {
             steps {
                 script {
-                    echo "Verifying Kyverno policies..."
-                    sh '''
-                        kubectl get clusterpolicies
-                        kubectl get policies --all-namespaces
-                    '''
+                    try {
+                        sh '''
+                            echo "🔍 Checking Kyverno namespace and policies..."
+                            kubectl get ns kyverno
+                            kubectl get pods -n kyverno -o wide | grep Running
+                        '''
+                    } catch (Exception e) {
+                        error "❌ Kyverno security validation failed: ${e.getMessage()}"
+                    }
                 }
             }
         }
 
-        stage('Deploy MySQL') {
+        stage('💾 Deploy MySQL Database') {
             steps {
                 script {
-                    echo "Deploying MySQL components..."
                     sh '''
+                        echo "🗄️ Deploying MySQL components..."
                         for resource in ${MYSQL_DEPLOYMENT_DIR}/*.yaml; do
-                            echo "Applying $resource to devsecops-prod namespace"
-                            kubectl apply -f "$resource" -n devsecops-prod
+                            if [ -f "$resource" ]; then
+                                echo "📤 Applying $resource to devsecops-prod namespace"
+                                kubectl apply -f "$resource" -n devsecops-prod
+                            else
+                                echo "❗ No MySQL deployment files found"
+                                exit 1
+                            fi
                         done
+                        
+                        # Wait for MySQL StatefulSet to be ready
+                        kubectl rollout status statefulset mysql -n devsecops-prod --timeout=5m
                     '''
                 }
             }
         }
 
-        stage('Verify MySQL Deployment') {
+        stage('🔍 Verify MySQL Deployment') {
             steps {
                 script {
-                    echo "Verifying MySQL deployment in devsecops-prod namespace..."
                     sh '''
+                        echo "✅ Verifying MySQL deployment in devsecops-prod namespace..."
                         kubectl get statefulsets -n devsecops-prod
-                        kubectl get services -n devsecops-prod
+                        kubectl get services -n devsecops-prod | grep mysql
+                        kubectl get pods -n devsecops-prod | grep mysql
                     '''
                 }
             }
         }
 
-        stage('Deploy Backend') {
+        stage('🚢 Deploy Backend Application') {
             steps {
                 script {
-                    echo "Deploying Backend components..."
                     sh '''
+                        echo "🔧 Deploying Backend components..."
                         for resource in ${BACKEND_DEPLOYMENT_DIR}/*.yaml; do
+                            # Skip deployment.yaml to control rollout separately
                             if [[ "$resource" == *"deployment.yaml" ]]; then
-                                echo "Skipping $resource"
+                                echo "⏩ Skipping $resource"
                                 continue
                             fi
-                            echo "Applying $resource to devsecops-prod namespace"
+                            
+                            echo "📡 Applying $resource to devsecops-prod namespace"
                             kubectl apply -f "$resource" -n devsecops-prod
                         done
+                        
+                        # Apply backend deployment with rolling update strategy
+                        kubectl apply -f ${BACKEND_DEPLOYMENT_DIR}/deployment.yaml -n devsecops-prod
+                        
+                        # Wait for deployment to be ready
+                        kubectl rollout status deployment backend-app -n devsecops-prod --timeout=5m
                     '''
                 }
             }
         }
 
-        stage('Verify Backend App') {
+        stage('🕹️ Verify Backend Application') {
             steps {
                 script {
-                    echo "Verifying backend app deployment in devsecops-prod namespace..."
                     sh '''
+                        echo "🔬 Verifying backend app deployment in devsecops-prod namespace..."
                         kubectl get pods -n devsecops-prod | grep backend-app
+                        kubectl get deployments -n devsecops-prod | grep backend-app
                     '''
                 }
             }
@@ -97,63 +119,89 @@ pipeline {
                 slackSend(
                     channel: SLACK_CHANNEL,
                     color: 'good',
-                    tokenCredentialId: 'slack-webhook',  // Using the Jenkins credential for Slack webhook
-                    attachments: [
-                        [
-                            "fallback": "Deployment Successful! :tada:",
-                            "color": "#36a64f",
-                            "pretext": "*Deployment Successful!* :tada:",
-                            "text": "The deployment of **MySQL** and **Backend** components has completed successfully in the `devsecops-prod` namespace.",
-                            "footer": "Jenkins Pipeline",
-                            "footer_icon": "https://www.jenkins.io/images/logos/jenkins/jenkins.png",
-                            "ts": "${System.currentTimeMillis() / 1000}"
-                        ]
-                    ]
+                    tokenCredentialId: 'slack-webhook',
+                    message: """
+🎉 *Deployment Successfully Completed!* 🚀
+
+*Deployment Details:*
+- 💾 *MySQL Database*: Deployed and Verified
+- 🚢 *Backend Application*: Rolled Out Successfully
+- 🌐 *Namespace*: `devsecops-prod`
+
+*Cluster Health:* 💚 All Systems Operational
+*Deployment Time:* ⏱️ ${currentBuild.durationString}
+
+*Deployed By:* 👤 ${env.BUILD_USER}
+*Build Number:* #${env.BUILD_NUMBER}
+
+*Quick Links:*
+- Jenkins Build: ${env.BUILD_URL}
+- Kubernetes Namespace: devsecops-prod
+
+*Next Steps:* 🔍 Perform final application testing
+"""
                 )
             }
-            echo 'Deployment successful!'
         }
+        
         failure {
             script {
                 slackSend(
                     channel: SLACK_CHANNEL,
                     color: 'danger',
-                    tokenCredentialId: 'slack-webhook',  // Using the Jenkins credential for Slack webhook
-                    attachments: [
-                        [
-                            "fallback": "Deployment Failed! :x:",
-                            "color": "#FF0000",
-                            "pretext": "*Deployment Failed!* :x:",
-                            "text": "The deployment has failed during the **MySQL** or **Backend** component setup. Please check the logs and review the error messages.",
-                            "footer": "Jenkins Pipeline",
-                            "footer_icon": "https://www.jenkins.io/images/logos/jenkins/jenkins.png",
-                            "ts": "${System.currentTimeMillis() / 1000}"
-                        ]
-                    ]
+                    tokenCredentialId: 'slack-webhook',
+                    message: """
+❌ *Deployment Failed!* 💥
+
+*Error Summary:*
+- 🚨 Deployment process encountered critical issues
+- 🔍 Immediate investigation required
+
+*Failure Details:*
+- *Stage:* ${currentStage.name}
+- *Build Number:* #${env.BUILD_NUMBER}
+
+*Recommended Actions:*
+1. 🕵️ Check Jenkins logs
+2. 🔧 Review Kubernetes configurations
+3. �logs Inspect detailed error messages
+
+*Need Help?* 📞 Contact DevOps Support Team
+"""
                 )
             }
-            echo 'Deployment failed!'
         }
+        
         unstable {
             script {
                 slackSend(
                     channel: SLACK_CHANNEL,
                     color: 'warning',
-                    tokenCredentialId: 'slack-webhook',  // Using the Jenkins credential for Slack webhook
-                    attachments: [
-                        [
-                            "fallback": "Deployment is unstable! :warning:",
-                            "color": "#FFCC00",
-                            "pretext": "*Deployment is unstable* :warning:",
-                            "text": "The deployment might be unstable. Please verify the state of the deployed components and resources.",
-                            "footer": "Jenkins Pipeline",
-                            "footer_icon": "https://www.jenkins.io/images/logos/jenkins/jenkins.png",
-                            "ts": "${System.currentTimeMillis() / 1000}"
-                        ]
-                    ]
+                    tokenCredentialId: 'slack-webhook',
+                    message: """
+⚠️ *Deployment Partially Successful* 🟨
+
+*Status:* 🔶 Unstable Deployment Detected
+
+*Potential Issues:*
+- 🧩 Some components may not be fully initialized
+- 🔬 Partial deployment success
+
+*Deployment Insights:*
+- *Build Number:* #${env.BUILD_NUMBER}
+- *Namespace:* devsecops-prod
+
+*Recommended Next Steps:*
+1. 🔍 Conduct manual verification
+2. 🧐 Review component statuses
+3. 🔄 Consider re-running deployment
+
+*Need Assistance?* 💬 Reach out to DevOps team
+"""
                 )
             }
         }
+        
         always {
             cleanWs()
         }
