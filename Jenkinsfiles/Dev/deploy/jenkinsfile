@@ -7,16 +7,15 @@ pipeline {
         KUBECONFIG = '/root/.kube/config'
         MYSQL_DEPLOYMENT_DIR = 'mysql-deployment'
         BACKEND_DEPLOYMENT_DIR = 'backend-deployment'
-        SLACK_CHANNEL = '#all-devsecopsmasters'  
-        SLACK_WEBHOOK_URL = 'https://hooks.slack.com/services/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'  
+        SLACK_CHANNEL = '#all-devsecopsmasters'
     }
 
     stages {
         stage('Check Kyverno') {
             steps {
                 script {
+                    echo "Checking Kyverno namespace and pods..."
                     sh '''
-                        echo "Checking Kyverno namespace and pods..."
                         kubectl get ns kyverno
                         kubectl get pods -n kyverno | grep "Running"
                     '''
@@ -27,8 +26,8 @@ pipeline {
         stage('Verify Policies') {
             steps {
                 script {
+                    echo "Verifying Kyverno policies..."
                     sh '''
-                        echo "Verifying Kyverno policies:"
                         kubectl get clusterpolicies
                         kubectl get policies --all-namespaces
                     '''
@@ -39,8 +38,8 @@ pipeline {
         stage('Deploy MySQL') {
             steps {
                 script {
+                    echo "Deploying MySQL components..."
                     sh '''
-                        echo "Deploying MySQL components..."
                         for resource in ${MYSQL_DEPLOYMENT_DIR}/*.yaml; do
                             echo "Applying $resource to devsecops-prod namespace"
                             kubectl apply -f "$resource" -n devsecops-prod
@@ -53,8 +52,8 @@ pipeline {
         stage('Verify MySQL Deployment') {
             steps {
                 script {
+                    echo "Verifying MySQL deployment in devsecops-prod namespace..."
                     sh '''
-                        echo "Verifying MySQL deployment in devsecops-prod namespace..."
                         kubectl get statefulsets -n devsecops-prod
                         kubectl get services -n devsecops-prod
                     '''
@@ -65,8 +64,8 @@ pipeline {
         stage('Deploy Backend') {
             steps {
                 script {
+                    echo "Deploying Backend components..."
                     sh '''
-                        echo "Deploying Backend components..."
                         for resource in ${BACKEND_DEPLOYMENT_DIR}/*.yaml; do
                             if [[ "$resource" == *"deployment.yaml" ]]; then
                                 echo "Skipping $resource"
@@ -83,8 +82,8 @@ pipeline {
         stage('Verify Backend App') {
             steps {
                 script {
+                    echo "Verifying backend app deployment in devsecops-prod namespace..."
                     sh '''
-                        echo "Verifying backend app deployment in devsecops-prod namespace..."
                         kubectl get pods -n devsecops-prod | grep backend-app
                     '''
                 }
@@ -96,8 +95,9 @@ pipeline {
         success {
             script {
                 slackSend(
-                    channel: SLACK_CHANNEL, 
-                    color: 'good', 
+                    channel: SLACK_CHANNEL,
+                    color: 'good',
+                    tokenCredentialId: 'slack-webhook',  // Using the Jenkins credential for Slack webhook
                     attachments: [
                         [
                             "fallback": "Deployment Successful! :tada:",
@@ -118,6 +118,7 @@ pipeline {
                 slackSend(
                     channel: SLACK_CHANNEL,
                     color: 'danger',
+                    tokenCredentialId: 'slack-webhook',  // Using the Jenkins credential for Slack webhook
                     attachments: [
                         [
                             "fallback": "Deployment Failed! :x:",
@@ -138,6 +139,7 @@ pipeline {
                 slackSend(
                     channel: SLACK_CHANNEL,
                     color: 'warning',
+                    tokenCredentialId: 'slack-webhook',  // Using the Jenkins credential for Slack webhook
                     attachments: [
                         [
                             "fallback": "Deployment is unstable! :warning:",
