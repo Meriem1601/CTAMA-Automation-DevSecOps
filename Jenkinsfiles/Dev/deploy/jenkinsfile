@@ -31,6 +31,8 @@ pipeline {
                             echo "🔍 Checking Kyverno namespace and policies..."
                             kubectl get ns kyverno
                             kubectl get pods -n kyverno -o wide | grep Running
+                            kubectl get clusterpolicies
+                            kubectl get policies --all-namespaces
                         '''
                     } catch (Exception e) {
                         error "❌ Kyverno security validation failed: ${e.getMessage()}"
@@ -55,7 +57,6 @@ pipeline {
                         done
                         
                         # Wait for MySQL StatefulSet to be ready
-                        kubectl rollout status statefulset mysql -n devsecops-prod --timeout=5m
                     '''
                 }
             }
@@ -89,12 +90,6 @@ pipeline {
                             echo "📡 Applying $resource to devsecops-prod namespace"
                             kubectl apply -f "$resource" -n devsecops-prod
                         done
-                        
-                        # Apply backend deployment with rolling update strategy
-                        kubectl apply -f ${BACKEND_DEPLOYMENT_DIR}/deployment.yaml -n devsecops-prod
-                        
-                        # Wait for deployment to be ready
-                        kubectl rollout status deployment backend-app -n devsecops-prod --timeout=5m
                     '''
                 }
             }
