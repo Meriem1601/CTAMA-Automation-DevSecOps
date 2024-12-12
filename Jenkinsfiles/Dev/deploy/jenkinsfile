@@ -7,6 +7,8 @@ pipeline {
         KUBECONFIG = '/root/.kube/config'
         MYSQL_DEPLOYMENT_DIR = 'mysql-deployment'
         BACKEND_DEPLOYMENT_DIR = 'backend-deployment'
+        SLACK_CHANNEL = '#all-devsecopsmasters'  /Myslack-channel
+        SLACK_WEBHOOK_URL = 'https://hooks.slack.com/services/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'  // Your Webhook URL
     }
 
     stages {
@@ -92,10 +94,63 @@ pipeline {
 
     post {
         success {
+            script {
+                slackSend(
+                    channel: SLACK_CHANNEL, 
+                    color: 'good', 
+                    attachments: [
+                        [
+                            "fallback": "Deployment Successful! :tada:",
+                            "color": "#36a64f",
+                            "pretext": "*Deployment Successful!* :tada:",
+                            "text": "The deployment of **MySQL** and **Backend** components has completed successfully in the `devsecops-prod` namespace.",
+                            "footer": "Jenkins Pipeline",
+                            "footer_icon": "https://www.jenkins.io/images/logos/jenkins/jenkins.png",
+                            "ts": "${System.currentTimeMillis() / 1000}"
+                        ]
+                    ]
+                )
+            }
             echo 'Deployment successful!'
         }
         failure {
+            script {
+                slackSend(
+                    channel: SLACK_CHANNEL,
+                    color: 'danger',
+                    attachments: [
+                        [
+                            "fallback": "Deployment Failed! :x:",
+                            "color": "#FF0000",
+                            "pretext": "*Deployment Failed!* :x:",
+                            "text": "The deployment has failed during the **MySQL** or **Backend** component setup. Please check the logs and review the error messages.",
+                            "footer": "Jenkins Pipeline",
+                            "footer_icon": "https://www.jenkins.io/images/logos/jenkins/jenkins.png",
+                            "ts": "${System.currentTimeMillis() / 1000}"
+                        ]
+                    ]
+                )
+            }
             echo 'Deployment failed!'
+        }
+        unstable {
+            script {
+                slackSend(
+                    channel: SLACK_CHANNEL,
+                    color: 'warning',
+                    attachments: [
+                        [
+                            "fallback": "Deployment is unstable! :warning:",
+                            "color": "#FFCC00",
+                            "pretext": "*Deployment is unstable* :warning:",
+                            "text": "The deployment might be unstable. Please verify the state of the deployed components and resources.",
+                            "footer": "Jenkins Pipeline",
+                            "footer_icon": "https://www.jenkins.io/images/logos/jenkins/jenkins.png",
+                            "ts": "${System.currentTimeMillis() / 1000}"
+                        ]
+                    ]
+                )
+            }
         }
         always {
             cleanWs()
