@@ -7,8 +7,8 @@ pipeline {
         KUBECONFIG = '/root/.kube/config'
         MYSQL_DEPLOYMENT_DIR = 'mysql-deployment'
         BACKEND_DEPLOYMENT_DIR = 'backend-deployment'
-        SLACK_CHANNEL = '#all-devsecopsmasters'  /Myslack-channel
-        SLACK_WEBHOOK_URL = 'https://hooks.slack.com/services/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'  // Your Webhook URL
+        SLACK_CHANNEL = '#all-devsecopsmasters'  
+        SLACK_WEBHOOK_URL = 'https://hooks.slack.com/services/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'  
     }
 
     stages {
