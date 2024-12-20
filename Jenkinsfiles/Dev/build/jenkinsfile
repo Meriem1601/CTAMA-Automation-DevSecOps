@@ -14,6 +14,7 @@ pipeline {
         ARTIFACT_NAME = "backend-artifact-${BUILD_NUMBER}.tar.gz"
         ARTIFACT_PATH = "${WORKSPACE}/artifacts"
         TRIVY_REPORTS_DIR = "${WORKSPACE}/trivy-reports"
+        SLACK_CHANNEL = '#were-building-a-cutting-edge-devsecops-solution'
     }
 
     stages {
@@ -142,9 +143,7 @@ pipeline {
                         '''
                         
                         withCredentials([string(credentialsId: 'github-token', variable: 'GITHUB_TOKEN')]) {
-                            // Make the script executable
                             sh 'chmod +x ./ghcr_deploy.sh'
-                            // Execute the script
                             sh './ghcr_deploy.sh'
                         }
                         echo "✅ Docker image successfully built and pushed to GHCR."
@@ -155,7 +154,6 @@ pipeline {
             }
         }
 
-        // New Trivy Security Scan Stage
         stage('Trivy Security Scan') {
             steps {
                 script {
@@ -166,10 +164,7 @@ pipeline {
                         ╚═══════════════════════════════════════════════════╝
                         '''
                         
-                        // Make the script executable
                         sh 'chmod +x ./trivy-scan.sh'
-                        
-                        // Execute the Trivy scan script
                         sh './trivy-scan.sh'
                         
                         echo "✅ Trivy security scan completed successfully."
@@ -184,24 +179,119 @@ pipeline {
 
     post {
         success {
-            echo '''
-            ╔═══════════════════════════════════════════════════╗
-            ║ ✨ CI Pipeline Completed Successfully            ║
-            ╚═══════════════════════════════════════════════════╝
-            '''
-            echo "The backend application has passed all stages successfully."
-            echo "Artifact is ready for deployment, and security checks have been completed."
-        }
+            script {
+                echo '''
+                ╔═══════════════════════════════════════════════════╗
+                ║ ✨ CI Pipeline Completed Successfully            ║
+                ╚═══════════════════════════════════════════════════╝
+                '''
+                echo "The backend application has passed all stages successfully."
+                echo "Artifact is ready for deployment, and security checks have been completed."
+                
+                slackSend(
+                    channel: SLACK_CHANNEL,
+                    color: 'good',
+                    message: """
+🎉 *CI Pipeline Successfully Completed!* 🚀
 
+*Build Details:*
+- 📦 *Artifact Created:* \`${ARTIFACT_NAME}\`
+- 🔍 *SonarQube Analysis:* Passed
+- 🛡️ *OWASP Dependency Check:* Completed
+- 🐳 *Docker Image:* Built and Pushed to GHCR
+- 🔒 *Trivy Security Scan:* Passed
+
+*Build Information:*
+- ⏱️ *Duration:* ${currentBuild.durationString}
+- 👤 *Triggered By:* ${env.BUILD_USER ?: 'Automated Trigger'}
+- 🔢 *Build Number:* #${env.BUILD_NUMBER}
+
+*Quick Links:*
+- 🔗 Jenkins Build: ${env.BUILD_URL}
+- 📊 SonarQube Report: Available in Jenkins
+- 📝 Dependency Check Report: Available in Jenkins
+- 📋 Trivy Scan Report: Available in Jenkins
+
+*Next Steps:* 
+✅ Artifact is ready for deployment pipeline
+"""
+                )
+            }
+        }
+        
         failure {
-            echo '''
-            ╔═══════════════════════════════════════════════════╗
-            ║ ❌ CI Pipeline Encountered Issues                ║
-            ╚═══════════════════════════════════════════════════╝
-            '''
-            echo "Please review the pipeline logs for detailed error information."
-        }
+            script {
+                echo '''
+                ╔═══════════════════════════════════════════════════╗
+                ║ ❌ CI Pipeline Encountered Issues                ║
+                ╚═══════════════════════════════════════════════════╝
+                '''
+                echo "Please review the pipeline logs for detailed error information."
+                
+                slackSend(
+                    channel: SLACK_CHANNEL,
+                    color: 'danger',
+                    message: """
+❌ *CI Pipeline Failed!* 💥
 
+*Error Summary:*
+- 🚨 Build process encountered critical issues
+- 🔍 Immediate investigation required
+
+*Build Details:*
+- *Failed Stage:* ${currentBuild.currentResult}
+- *Build Number:* #${env.BUILD_NUMBER}
+- ⏱️ *Duration:* ${currentBuild.durationString}
+- 👤 *Triggered By:* ${env.BUILD_USER ?: 'Automated Trigger'}
+
+*Quick Access:*
+- 🔗 Failed Build: ${env.BUILD_URL}
+
+*Recommended Actions:*
+1. 🕵️ Check Jenkins console output
+2. 🔍 Review stage logs
+3. 📝 Check for dependency or security issues
+
+*Need Help?* 📞 Contact the DevOps Team
+"""
+                )
+            }
+        }
+        
+        unstable {
+            script {
+                slackSend(
+                    channel: SLACK_CHANNEL,
+                    color: 'warning',
+                    message: """
+⚠️ *CI Pipeline Partially Successful* 🟨
+
+*Status:* 🔶 Unstable Build Detected
+
+*Build Information:*
+- *Build Number:* #${env.BUILD_NUMBER}
+- ⏱️ *Duration:* ${currentBuild.durationString}
+- 👤 *Triggered By:* ${env.BUILD_USER ?: 'Automated Trigger'}
+
+*Potential Issues:*
+- 🧩 Some stages completed with warnings
+- 🔬 Quality gates may need review
+- 🛡️ Security scans may have found non-critical issues
+
+*Quick Access:*
+- 🔗 Build Details: ${env.BUILD_URL}
+
+*Recommended Actions:*
+1. 🔍 Review warning messages
+2. 📊 Check quality reports
+3. 🔒 Verify security scan results
+
+*Need Assistance?* 💬 Contact the DevOps Team
+"""
+                )
+            }
+        }
+        
         always {
             cleanWs()
         }
