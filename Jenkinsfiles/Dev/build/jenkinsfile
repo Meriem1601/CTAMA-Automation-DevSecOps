@@ -195,7 +195,7 @@ pipeline {
 🎉 *CI Pipeline Successfully Completed!* 🚀
 
 *Build Details:*
-- 📦 *Artifact Created:* \`${ARTIFACT_NAME}\`
+- 📦 *Artifact Created:* ${ARTIFACT_NAME}
 - 🔍 *SonarQube Analysis:* Passed
 - 🛡️ *OWASP Dependency Check:* Completed
 - 🐳 *Docker Image:* Built and Pushed to GHCR
